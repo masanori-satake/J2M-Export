@@ -32,7 +32,9 @@ def test_search_issues(mock_request):
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "issues": [{"key": "PROJ-1"}, {"key": "PROJ-2"}],
-        "total": 2
+        "total": 2,
+        "names": {"summary": "Summary"},
+        "schema": {"summary": {"type": "string"}}
     }
     mock_request.return_value = mock_response
 
@@ -42,3 +44,5 @@ def test_search_issues(mock_request):
     assert len(issues) == 2
     assert issues[0]["key"] == "PROJ-1"
     assert issues[1]["key"] == "PROJ-2"
+    assert issues[0]["names"]["summary"] == "Summary"
+    assert issues[0]["schema"]["summary"]["type"] == "string"
