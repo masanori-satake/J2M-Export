@@ -168,8 +168,8 @@ def main():
     # 3. If no issues found yet but labels are specified, fetch by labels
     if not issues_to_process and config.labels:
         try:
-            # Construct JQL for labels
-            escaped_labels = [f'"{l}"' for l in config.labels]
+            # Construct JQL for labels (escape double quotes)
+            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
             label_jql = f"labels IN ({', '.join(escaped_labels)})"
             logger.info(f"Fetching issues by labels JQL: {label_jql}")
             issues_to_process = client.search_issues(label_jql)
