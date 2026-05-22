@@ -2,25 +2,26 @@ import re
 from pathlib import Path
 
 def sanitize_filename(name: str) -> str:
+    """文字列をファイル名として使用可能な形式にサニタイズする。
+
+    OS(Windows/Linux/Mac)の制約に基づき不適切な文字を削除し、長さを制限する。
     """
-    Sanitize string for use as a filename (Windows/Linux/Mac compatible).
-    """
-    # Remove characters that are not allowed in filenames
+    # ファイル名に使用できない文字を削除
     name = re.sub(r'[\\/*?:"<>|]', '', name)
-    # Replace spaces with underscores or just keep them? Reference uses spaces.
-    # We'll keep spaces but trim and limit length.
+    # 前後の空白を削除し、長さを100文字以内に制限する
     return name.strip()[:100]
 
 def get_unique_filename(output_dir: str, project_key: str, summary: str, issue_key: str) -> Path:
-    """
-    Generate a unique filename for the export.
+    """エクスポート用のユニークなファイル名を生成する。
+
+    同名のファイルが存在する場合は、チケットキーを付加して衝突を避ける。
     """
     base_name = f"【{project_key}】 {summary}"
     sanitized_name = sanitize_filename(base_name)
 
     path = Path(output_dir) / f"{sanitized_name}.md"
     if path.exists():
-        # Append issue key if file exists
+        # 同名のファイルが存在する場合は、末尾にチケットキーを付与する
         path = Path(output_dir) / f"{sanitized_name} ({issue_key}).md"
 
     return path
