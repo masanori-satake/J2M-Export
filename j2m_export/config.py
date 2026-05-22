@@ -1,8 +1,11 @@
 import os
 import yaml
 import argparse
+import logging
 from pathlib import Path
 from typing import Optional, List, Union
+
+logger = logging.getLogger(__name__)
 
 # デフォルトの設定ファイルパス。リポジトリのルートディレクトリに配置される。
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "j2m_config.yaml"
@@ -74,7 +77,7 @@ class Config:
                         self.proxy = file_config.get("proxy", self.proxy)
                         self.token = file_config.get("token", self.token)
             except Exception as e:
-                print(f"警告: 設定ファイル {config_path} の読み込みに失敗しました。ファイル形式が正しいか確認してください。詳細: {e}")
+                logger.warning(f"設定ファイル {config_path} の読み込みに失敗しました。ファイル形式が正しいか確認してください。詳細: {e}")
 
         # 2. 環境変数からの読み込み。標準的なプロキシ環境変数をチェックする。
         env_https_proxy = os.environ.get("HTTPS_PROXY")
