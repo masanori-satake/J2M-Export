@@ -1,0 +1,27 @@
+# Jira to Markdown Exporter 設定サンプル
+
+# JiraのベースURL (例: https://jira.example.com)
+base_url: "https://your-jira.com"
+
+# エクスポートするチケットID（リスト形式）
+issue_keys:
+  - "PROJ-1"
+  - "PROJ-2"
+
+# または JQL を使用して対象を指定
+# jql: "project = PROJ AND status = 'In Progress'"
+
+# Bearerトークン
+token: "your_bearer_token_here"
+
+# 出力先ディレクトリ (既定: output)
+output_dir: "output"
+
+# 出力ファイルの最大サイズ (MB) (既定: 100.0)
+max_mb: 100.0
+
+# 処理を停止する閾値 (MB) (既定: 95.0)
+stop_threshold_mb: 95.0
+
+# HTTP/HTTPS プロキシURL
+# proxy: "http://proxy.example.com:8080"
