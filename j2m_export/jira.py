@@ -71,10 +71,20 @@ class JiraClient:
                 "jql": jql,
                 "startAt": start,
                 "maxResults": limit,
-                "expand": "renderedFields"
+                "expand": "renderedFields,names,schema"
             }
             data = self._request("GET", path, params=params)
             results = data.get("issues", [])
+
+            # Attach names and schema metadata to each issue
+            names = data.get("names", {})
+            schema = data.get("schema", {})
+            for issue in results:
+                if names:
+                    issue["names"] = names
+                if schema:
+                    issue["schema"] = schema
+
             issues.extend(results)
 
             if start + len(results) >= data.get("total", 0) or not results:

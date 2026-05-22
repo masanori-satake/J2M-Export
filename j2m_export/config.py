@@ -19,6 +19,7 @@ class Config:
         self.output_dir: str = "output"
         self.max_mb: float = 100.0
         self.stop_threshold_mb: float = 95.0
+        self.exclude_fields: List[str] = []
         self.proxy: Optional[str] = None
         self.token: Optional[str] = None
 
@@ -52,6 +53,14 @@ class Config:
                         self.output_dir = file_config.get("output_dir", self.output_dir)
                         self.max_mb = float(file_config.get("max_mb", self.max_mb))
                         self.stop_threshold_mb = float(file_config.get("stop_threshold_mb", self.stop_threshold_mb))
+
+                        exclude = file_config.get("exclude_fields")
+                        if exclude:
+                            if isinstance(exclude, list):
+                                self.exclude_fields = [str(e) for e in exclude]
+                            else:
+                                self.exclude_fields = [e.strip() for e in str(exclude).split(",")]
+
                         self.proxy = file_config.get("proxy", self.proxy)
                         self.token = file_config.get("token", self.token)
             except Exception as e:
@@ -73,6 +82,7 @@ class Config:
         parser.add_argument("--output-dir", type=str, help="Markdownファイルを保存するディレクトリ")
         parser.add_argument("--max-mb", type=float, help="出力ファイルの最大サイズ (MB)")
         parser.add_argument("--stop-threshold-mb", type=float, help="処理を停止する閾値 (MB)")
+        parser.add_argument("--exclude-fields", type=str, help="除外するフィールドの内部ID（カンマ区切り）")
         parser.add_argument("--proxy", type=str, help="HTTP/HTTPS プロキシURL")
         parser.add_argument("--config", type=str, help=f"設定ファイルのパス (既定: j2m_config.yaml)")
         parser.add_argument("--token", type=str, help="JiraのBearerトークン")
@@ -85,6 +95,8 @@ class Config:
         if cli_args.output_dir: self.output_dir = cli_args.output_dir
         if cli_args.max_mb is not None: self.max_mb = cli_args.max_mb
         if cli_args.stop_threshold_mb is not None: self.stop_threshold_mb = cli_args.stop_threshold_mb
+        if cli_args.exclude_fields:
+            self.exclude_fields = [f.strip() for f in cli_args.exclude_fields.split(",")]
         if cli_args.proxy: self.proxy = cli_args.proxy
         if cli_args.token: self.token = cli_args.token
 
