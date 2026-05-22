@@ -16,6 +16,7 @@ class Config:
     def __init__(self):
         self.base_url: Optional[str] = None
         self.issue_keys: List[str] = []
+        self.labels: List[str] = []
         self.jql: Optional[str] = None
         self.output_dir: str = "output"
         self.max_mb: float = 100.0
@@ -51,6 +52,13 @@ class Config:
                             else:
                                 self.issue_keys = [str(keys)]
 
+                        lbls = file_config.get("labels")
+                        if lbls:
+                            if isinstance(lbls, list):
+                                self.labels = [str(l) for l in lbls]
+                            else:
+                                self.labels = [str(lbls)]
+
                         self.jql = file_config.get("jql", self.jql)
                         self.output_dir = file_config.get("output_dir", self.output_dir)
                         self.max_mb = float(file_config.get("max_mb", self.max_mb))
@@ -80,6 +88,7 @@ class Config:
         parser = argparse.ArgumentParser(description="Jiraチケット情報をMarkdownファイルに変換するツール")
         parser.add_argument("--base-url", type=str, help="JiraのベースURL (例: https://jira.example.com)")
         parser.add_argument("--issue-key", type=str, nargs="+", help="エクスポートするチケットID（複数指定可能）")
+        parser.add_argument("--label", type=str, nargs="+", help="対象とするラベル（複数指定可能。いずれかに合致するものを抽出）")
         parser.add_argument("--jql", type=str, help="エクスポート対象を特定するJQLクエリ")
         parser.add_argument("--output-dir", type=str, help="Markdownファイルを保存するディレクトリ")
         parser.add_argument("--max-mb", type=float, help="出力ファイルの最大サイズ (MB)")
@@ -93,6 +102,7 @@ class Config:
 
         if cli_args.base_url: self.base_url = cli_args.base_url
         if cli_args.issue_key: self.issue_keys = cli_args.issue_key
+        if cli_args.label: self.labels = cli_args.label
         if cli_args.jql: self.jql = cli_args.jql
         if cli_args.output_dir: self.output_dir = cli_args.output_dir
         if cli_args.max_mb is not None: self.max_mb = cli_args.max_mb
@@ -109,8 +119,8 @@ class Config:
         """
         if not self.base_url:
             raise ValueError("base_url（JiraのベースURL）が設定されていません。")
-        if not self.issue_keys and not self.jql:
-            raise ValueError("issue_keys または jql のいずれか一方は必須です。")
+        if not self.issue_keys and not self.jql and not self.labels:
+            raise ValueError("issue_key, jql, label のいずれか一つは必須です。")
         if not self.token:
             raise ValueError("token（Bearerトークン）が設定されていません。")
 

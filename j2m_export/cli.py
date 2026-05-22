@@ -165,8 +165,36 @@ def main():
         except Exception as e:
             logger.error(f"JQLでのチケット検索に失敗しました。JQLクエリが正しいか確認してください。詳細: {e}")
 
+    # 3. 指定されたキーやJQLで見つからず、ラベルが指定されている場合は、ラベルで直接取得
+    if not issues_to_process and config.labels:
+        try:
+            # ラベル用のJQLを生成（ダブルクォートをエスケープ）
+            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
+            label_jql = f"labels IN ({', '.join(escaped_labels)})"
+            logger.info(f"ラベルによるチケット取得を開始します（JQL: {label_jql}）")
+            issues_to_process = client.search_issues(label_jql)
+        except Exception as e:
+            logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
+
     if not issues_to_process:
         logger.warning("処理対象のチケットが見つかりませんでした。")
+        return
+
+    # 4. ラベルが指定されている場合は、取得したチケットをラベルでフィルタリング（後続フィルタリング）
+    if config.labels:
+        filtered_issues = []
+        label_set = {l.lower() for l in config.labels}
+        for issue in issues_to_process:
+            issue_labels = [l.lower() for l in issue.get('fields', {}).get('labels', [])]
+            # Jiraの挙動（ケースインセンシティブ）に合わせ、大文字小文字を区別せずにラベルをチェック
+            if any(label in label_set for label in issue_labels):
+                filtered_issues.append(issue)
+
+        issues_to_process = filtered_issues
+        logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットを抽出しました。対象ラベル: {', '.join(config.labels)}")
+
+    if not issues_to_process:
+        logger.warning("ラベルに合致するチケットが見つかりませんでした。")
         return
 
     # 収集したチケットの処理と保存
