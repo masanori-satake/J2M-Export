@@ -86,7 +86,7 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
             continue
 
         if val is not None:
-            label = names.get(fid, fid)
+            label = names.get(fid, fid.capitalize())
             md += f"- **{label}**: {format_field_value(val)}\n"
             processed_fields.add(fid)
 
