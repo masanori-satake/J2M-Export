@@ -15,7 +15,7 @@
 ### 1. 依存関係と環境構築
 - ランタイム依存関係は `requirements.txt` に記載されています。
 - 開発専用の依存関係（pytest など）は `requirements-dev.txt` に記載されています。
-- 開発環境のセットアップは `pip install -r requirements.txt` を実行してください。
+- 開発環境のセットアップは pip install -r requirements.txt -r requirements-dev.txt を実行してください。
 - テストの実行は `python3 -m pytest tests/` を使用してください。
 
 ### 2. 設定管理
