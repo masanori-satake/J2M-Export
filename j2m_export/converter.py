@@ -6,15 +6,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MarkdownConverter:
+    """Jiraのレンダリング済みHTMLをMarkdownに変換するクラス。
+
+    Jira Data CenterのREST APIから取得した renderedFields を処理する。
     """
-    Convert Jira rendered HTML to Markdown.
-    """
+
     def __init__(self, base_url: str):
         self.base_url = base_url
 
     def convert(self, html_content: str) -> str:
-        """
-        Entry point for HTML to Markdown conversion.
+        """HTMLコンテンツをMarkdownに変換する。
         """
         if not html_content:
             return ""
@@ -22,21 +23,19 @@ class MarkdownConverter:
         return self._walk(soup)
 
     def _walk(self, node) -> str:
-        """
-        Recursively walk the DOM tree.
+        """DOMツリーを再帰的に走査する内部メソッド。
         """
         md = ""
         for child in node.children:
             if isinstance(child, Tag):
                 md += self._process_tag(child)
             else:
-                # Jira might have some unescaped HTML characters
+                # Jiraから取得されるHTMLには、一部エスケープされた文字が含まれる場合があるため解除する。
                 md += html.unescape(str(child))
         return md
 
     def _process_tag(self, tag: Tag) -> str:
-        """
-        Define conversion rules per tag.
+        """HTMLタグごとの変換ルールを定義する。
         """
         name = tag.name
 
@@ -91,7 +90,7 @@ class MarkdownConverter:
                         break
             return f"\n```{lang}\n{tag.get_text()}\n```\n"
 
-        # Handle Jira specific blocks if any (e.g., panel, info)
+        # Jira特有のブロック要素（パネル、情報マクロなど）の処理。
         if tag.get('class') and any(c in tag.get('class') for c in ['panel', 'confluence-information-macro']):
             title = ""
             title_node = tag.find(class_=re.compile("header|title"))
@@ -111,12 +110,11 @@ class MarkdownConverter:
                 result += f"{body_md}\n"
             return result
 
-        # Default: recursively process children
+        # 未定義のタグは、その子要素を再帰的に処理する。
         return self._walk(tag)
 
     def _handle_table(self, table: Tag) -> str:
-        """
-        Convert HTML table to Markdown table.
+        """HTMLテーブルをMarkdownテーブルに変換する。
         """
         rows = []
         for tr in table.find_all('tr', recursive=False):

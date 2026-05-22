@@ -6,10 +6,11 @@ from typing import Dict, List, Optional, Any
 logger = logging.getLogger(__name__)
 
 class JiraClient:
+    """Jira Data Center REST API クライアント。
+
+    認証、プロキシ設定、およびリトライロジックを管理する。
     """
-    Jira Data Center REST API client.
-    Handles authentication, proxy, and retries.
-    """
+
     def __init__(self, base_url: str, token: str, proxy: Optional[str] = None):
         self.base_url = base_url
         self.headers = {
@@ -28,8 +29,9 @@ class JiraClient:
             self.session.proxies.update(self.proxies)
 
     def _request(self, method: str, path: str, params: Optional[Dict] = None, retries: int = 3, backoff: float = 2.0) -> Dict:
-        """
-        Common request handler with retry logic.
+        """共通リクエストハンドラ。指数バックオフを伴う再試行を行う。
+
+        Jiraのレート制限(429)や一時的なサーバーエラー(5xx)に対応する。
         """
         url = f"{self.base_url}{path}"
         for i in range(retries):
@@ -38,7 +40,7 @@ class JiraClient:
                 if response.status_code == 200:
                     return response.json()
                 elif response.status_code == 429 or 500 <= response.status_code < 600:
-                    logger.warning(f"Request error {response.status_code} for {url}. Retrying ({i+1}/{retries})...")
+                    logger.warning(f"一時的なサーバーエラーまたはレート制限が発生しました（ステータスコード: {response.status_code}）。再試行します ({i+1}/{retries})...")
                     time.sleep(backoff * (2 ** i))
                     continue
                 else:
@@ -46,22 +48,24 @@ class JiraClient:
             except requests.exceptions.RequestException as e:
                 if i == retries - 1:
                     raise
-                logger.warning(f"Request failed: {e}. Retrying ({i+1}/{retries})...")
+                logger.warning(f"リクエストに失敗しました（原因: {e}）。再試行します ({i+1}/{retries})...")
                 time.sleep(backoff * (2 ** i))
 
-        raise Exception(f"Failed to fetch {url} after {retries} retries")
+        raise Exception(f"最大リトライ回数を超えたため、取得に失敗しました ({url})。ネットワーク環境やJiraの状態を確認してください。")
 
     def get_issue(self, issue_key: str) -> Dict:
-        """
-        Fetch issue details. Use expand=renderedFields to get HTML content.
+        """指定されたチケットの詳細情報を取得する。
+
+        Markdown変換用にHTMLコンテンツを取得するため、expand=renderedFields を使用する。
         """
         path = f"/rest/api/2/issue/{issue_key}"
         params = {"expand": "renderedFields,names,schema"}
         return self._request("GET", path, params=params)
 
     def search_issues(self, jql: str, limit: int = 50) -> List[Dict]:
-        """
-        Search issues using JQL. Handles pagination.
+        """JQLを使用してチケットを検索する。ページネーションを自動的に処理する。
+
+        検索結果の各チケットには、フィールド名とスキーマのメタデータを付与する。
         """
         path = "/rest/api/2/search"
         issues = []
@@ -76,7 +80,7 @@ class JiraClient:
             data = self._request("GET", path, params=params)
             results = data.get("issues", [])
 
-            # Attach names and schema metadata to each issue
+            # フィールド名とスキーマのメタデータを各チケットに付加し、後の整形処理で利用可能にする。
             names = data.get("names", {})
             schema = data.get("schema", {})
             for issue in results:

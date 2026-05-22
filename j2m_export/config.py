@@ -1,17 +1,21 @@
 import os
 import yaml
 import argparse
+import logging
 from pathlib import Path
 from typing import Optional, List, Union
 
-# Default config file location
+logger = logging.getLogger(__name__)
+
+# デフォルトの設定ファイルパス。リポジトリのルートディレクトリに配置される。
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "j2m_config.yaml"
 
 class Config:
+    """J2M-Exportの設定管理クラス。
+
+    CLI引数、環境変数、およびYAML設定ファイルからの設定読み込みをサポートする。
     """
-    Configuration management for J2M-Export.
-    Supports CLI arguments, environment variables, and config files.
-    """
+
     def __init__(self):
         self.base_url: Optional[str] = None
         self.issue_keys: List[str] = []
@@ -25,17 +29,18 @@ class Config:
         self.token: Optional[str] = None
 
     def load(self):
+        """設定をロードする。
+
+        優先順位は CLI引数 > 設定ファイル > デフォルト値 の順。
         """
-        Load configuration. Priority: CLI > Config File > Default.
-        """
-        # Parse for config file path first
+        # 最初に設定ファイルのパスを特定するために引数をパースする。
         pre_parser = argparse.ArgumentParser(add_help=False)
         pre_parser.add_argument("--config", type=str, default=str(DEFAULT_CONFIG_PATH))
         pre_args, _ = pre_parser.parse_known_args()
 
         config_path = Path(pre_args.config)
 
-        # 1. Load from config file (Low priority)
+        # 1. 設定ファイルからの読み込み（低優先度）
         if config_path.exists():
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
@@ -72,9 +77,9 @@ class Config:
                         self.proxy = file_config.get("proxy", self.proxy)
                         self.token = file_config.get("token", self.token)
             except Exception as e:
-                print(f"Warning: Failed to load config file {config_path}: {e}")
+                logger.warning(f"設定ファイル {config_path} の読み込みに失敗しました。ファイル形式が正しいか確認してください。詳細: {e}")
 
-        # 2. Load from environment variables
+        # 2. 環境変数からの読み込み。標準的なプロキシ環境変数をチェックする。
         env_https_proxy = os.environ.get("HTTPS_PROXY")
         env_http_proxy = os.environ.get("HTTP_PROXY")
         if env_https_proxy:
@@ -82,7 +87,7 @@ class Config:
         elif env_http_proxy:
             self.proxy = env_http_proxy
 
-        # 3. Load from CLI (Highest priority)
+        # 3. CLI引数からの読み込み（最高優先度）
         parser = argparse.ArgumentParser(description="Jiraチケット情報をMarkdownファイルに変換するツール")
         parser.add_argument("--base-url", type=str, help="JiraのベースURL (例: https://jira.example.com)")
         parser.add_argument("--issue-key", type=str, nargs="+", help="エクスポートするチケットID（複数指定可能）")
@@ -111,14 +116,15 @@ class Config:
         if cli_args.token: self.token = cli_args.token
 
     def validate(self):
-        """
-        Validate required settings.
+        """必須設定項目のバリデーションを行う。
+
+        Jira APIとの通信に必要な最小限の設定を確認する。
         """
         if not self.base_url:
-            raise ValueError("base_url is required")
+            raise ValueError("base_url（JiraのベースURL）が設定されていません。")
         if not self.issue_keys and not self.jql and not self.labels:
-            raise ValueError("Either issue_key, jql or label is required")
+            raise ValueError("issue_key, jql, label のいずれか一つは必須です。")
         if not self.token:
-            raise ValueError("token is required")
+            raise ValueError("token（Bearerトークン）が設定されていません。")
 
         self.base_url = self.base_url.rstrip("/")

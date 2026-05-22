@@ -11,22 +11,23 @@ from .utils import get_unique_filename, bytes_to_mb, is_within_size_limit
 
 logger = logging.getLogger(__name__)
 
-# Mandatory fields that cannot be excluded
+# エクスポートから除外できない必須フィールドのリスト。
 NON_IGNORABLE_IDS = ['summary', 'project', 'status', 'assignee', 'created', 'key']
 
 def format_field_value(value: Any) -> str:
-    """
-    Format Jira field value based on its type.
+    """Jiraのフィールド値を型に応じて文字列に整形する。
+
+    辞書型の場合は表示名、リスト型の場合はカンマ区切りの文字列を優先する。
     """
     if value is None:
         return ""
     if isinstance(value, (str, int, float, bool)):
         return str(value)
     if isinstance(value, dict):
-        # Prefer displayName or name for objects
+        # オブジェクトの場合は表示名を優先し、なければ内部名、それもなければJSON文字列を返す。
         return value.get('displayName') or value.get('name') or json.dumps(value, ensure_ascii=False)
     if isinstance(value, list):
-        # Format list as comma separated strings or JSON if complex
+        # リストの場合は各要素を整形し、カンマ区切りで結合する。
         formatted_list = []
         for item in value:
             if isinstance(item, dict):
@@ -42,8 +43,7 @@ def format_field_value(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, exclude_fields: Optional[List[str]] = None) -> str:
-    """
-    Format a single issue into a Markdown string.
+    """単一のチケットをMarkdown形式の文字列に変換する。
     """
     exclude_fields = exclude_fields or []
     fields = issue.get('fields') or {}
@@ -58,11 +58,11 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     md = f"\n---\n# {summary}\n"
     md += f"- **Key**: {key}\n"
 
-    # Define standard fields to always show first if not excluded
+    # 整形時に優先的に表示する標準フィールドの順序。
     standard_order = ['project', 'status', 'priority', 'assignee', 'reporter', 'created', 'updated', 'duedate', 'resolution']
     processed_fields = {'summary', 'description', 'comment', 'worklog', 'attachment'}
 
-    # 1. Output mandatory and common standard fields
+    # 1. 必須および主要な標準フィールドの出力
     for fid in standard_order:
         if fid in processed_fields: continue
         if fid in exclude_fields and fid not in NON_IGNORABLE_IDS:
@@ -74,13 +74,13 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
             md += f"- **{label}**: {format_field_value(val)}\n"
             processed_fields.add(fid)
 
-    # 2. Output other standard fields (網羅的に出力)
+    # 2. その他の標準フィールドを網羅的に出力
     for fid, val in fields.items():
         if fid in processed_fields: continue
         if fid in exclude_fields and fid not in NON_IGNORABLE_IDS:
             continue
 
-        # Skip custom fields
+        # カスタムフィールドはAIナレッジとしては不要なことが多いため、現在はスキップする仕様。
         f_schema = schema.get(fid, {})
         if f_schema.get('custom'):
             continue
@@ -96,18 +96,18 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     description = rendered.get('description', fields.get('description', ''))
     md += converter.convert(description)
 
-    # Comments
+    # コメントの処理
     comments_data = fields.get('comment', {}).get('comments', [])
     if comments_data:
         md += "\n## Comments\n"
-        # Note: renderedFields for comments is usually under issue['renderedFields']['comment']['comments']
+        # レンダリング済みコメントは renderedFields の入れ子構造の中に格納されている。
         rendered_comments = rendered.get('comment', {}).get('comments', [])
 
         for i, comment in enumerate(comments_data):
             author = comment.get('author', {}).get('displayName', 'Anonymous')
             created_at = comment.get('created')
 
-            # Try to get rendered comment body
+            # レンダリング済みのコメント本文の取得を試みる
             body_html = ""
             if i < len(rendered_comments):
                 body_html = rendered_comments[i].get('body')
@@ -131,56 +131,56 @@ def main():
         config.load()
         config.validate()
     except Exception as e:
-        logger.error(f"Configuration error: {e}")
+        logger.error(f"設定の読み込みに失敗しました。j2m_config.yamlの内容や引数を確認してください。詳細: {e}")
         sys.exit(1)
 
     client = JiraClient(config.base_url, config.token, config.proxy)
     converter = MarkdownConverter(config.base_url)
 
-    # Validate exclude_fields once
+    # 除外フィールド設定の検証
     for eid in config.exclude_fields:
         if eid in NON_IGNORABLE_IDS:
-            logger.warning(f"Field '{eid}' is mandatory and cannot be excluded.")
+            logger.warning(f"フィールド '{eid}' は必須項目のため、除外設定を無視してエクスポートします。")
 
     issues_to_process = []
 
-    # 1. Collect issues from Keys
+    # 1. 指定されたチケットキーからチケットを収集
     if config.issue_keys:
         for key in config.issue_keys:
             try:
                 issue = client.get_issue(key)
                 issues_to_process.append(issue)
             except Exception as e:
-                logger.error(f"Failed to fetch issue {key}: {e}")
+                logger.error(f"チケット {key} の取得に失敗しました。キーが正しいか、権限があるか確認してください。詳細: {e}")
 
-    # 2. Collect issues from JQL
+    # 2. JQLクエリに合致するチケットを収集
     if config.jql:
         try:
             jql_issues = client.search_issues(config.jql)
-            # Avoid duplicates if key was also specified
+            # チケットキーで既に取得済みの場合は重複を避ける。
             existing_keys = {i['key'] for i in issues_to_process}
             for issue in jql_issues:
                 if issue['key'] not in existing_keys:
                     issues_to_process.append(issue)
         except Exception as e:
-            logger.error(f"JQL search failed: {e}")
+            logger.error(f"JQLでのチケット検索に失敗しました。JQLクエリが正しいか確認してください。詳細: {e}")
 
-    # 3. If no issues found yet but labels are specified, fetch by labels
+    # 3. 指定されたキーやJQLで見つからず、ラベルが指定されている場合は、ラベルで直接取得
     if not issues_to_process and config.labels:
         try:
-            # Construct JQL for labels (escape double quotes)
+            # ラベル用のJQLを生成（ダブルクォートをエスケープ）
             escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
             label_jql = f"labels IN ({', '.join(escaped_labels)})"
-            logger.info(f"Fetching issues by labels JQL: {label_jql}")
+            logger.info(f"ラベルによるチケット取得を開始します（JQL: {label_jql}）")
             issues_to_process = client.search_issues(label_jql)
         except Exception as e:
-            logger.error(f"Failed to fetch issues by labels: {e}")
+            logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
 
     if not issues_to_process:
-        logger.warning("No issues found to process.")
+        logger.warning("処理対象のチケットが見つかりませんでした。")
         return
 
-    # 4. Filter issues by labels if specified (post-filtering)
+    # 4. ラベルが指定されている場合は、取得したチケットをラベルでフィルタリング（後続フィルタリング）
     if config.labels:
         filtered_issues = []
         label_set = {l.lower() for l in config.labels}
@@ -191,13 +191,13 @@ def main():
                 filtered_issues.append(issue)
 
         issues_to_process = filtered_issues
-        logger.info(f"Filtered to {len(issues_to_process)} issues matching labels: {', '.join(config.labels)}")
+        logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットを抽出しました。対象ラベル: {', '.join(config.labels)}")
 
     if not issues_to_process:
-        logger.warning("No issues found matching labels.")
+        logger.warning("ラベルに合致するチケットが見つかりませんでした。")
         return
 
-    # Process and Save
+    # 収集したチケットの処理と保存
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -214,7 +214,7 @@ def main():
             md_bytes = len(issue_md.encode('utf-8'))
 
             if not is_within_size_limit(total_bytes + md_bytes, config.stop_threshold_mb):
-                logger.warning(f"Stop threshold ({config.stop_threshold_mb}MB) reached. Stopping export.")
+                logger.warning(f"停止閾値 ({config.stop_threshold_mb}MB) に達したため、エクスポートを中断します。")
                 break
 
             output_path = get_unique_filename(config.output_dir, project_key, summary, key)
@@ -223,14 +223,14 @@ def main():
 
             total_bytes += md_bytes
             issue_count += 1
-            logger.info(f"Exported {key}: {summary}")
+            logger.info(f"エクスポート完了: {key} ({summary})")
 
-        except Exception:
-            logger.exception(f"Failed to process issue {key}")
+        except Exception as e:
+            logger.exception(f"チケット {key} の処理中にエラーが発生しました。変換処理またはファイル書き込みを確認してください。詳細: {e}")
 
     logger.info("-" * 50)
-    logger.info(f"Successfully exported {issue_count} issues.")
-    logger.info(f"Total size: {bytes_to_mb(total_bytes):.2f}MB")
+    logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")
+    logger.info(f"合計サイズ: {bytes_to_mb(total_bytes):.2f}MB")
 
 if __name__ == "__main__":
     main()
