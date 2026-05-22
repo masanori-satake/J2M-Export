@@ -38,10 +38,11 @@ def format_field_value(value: Any) -> str:
 
     return json.dumps(value, ensure_ascii=False)
 
-def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, exclude_fields: List[str] = []) -> str:
+def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, exclude_fields: Optional[List[str]] = None) -> str:
     """
     Format a single issue into a Markdown string.
     """
+    exclude_fields = exclude_fields or []
     fields = issue.get('fields') or {}
     rendered = issue.get('renderedFields') or {}
     names = issue.get('names') or {}
