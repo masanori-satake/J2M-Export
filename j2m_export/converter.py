@@ -82,7 +82,14 @@ class MarkdownConverter:
             return f"[{self._walk(tag)}]({href})"
 
         if name == 'pre' or 'code' in tag.get('class', []):
-             return f"\n```\n{tag.get_text()}\n```\n"
+            classes = tag.get('class', [])
+            lang = ""
+            if isinstance(classes, list):
+                for c in classes:
+                    if c.startswith('code-'):
+                        lang = c.replace('code-', '')
+                        break
+            return f"\n```{lang}\n{tag.get_text()}\n```\n"
 
         # Handle Jira specific blocks if any (e.g., panel, info)
         if tag.get('class') and any(c in tag.get('class') for c in ['panel', 'confluence-information-macro']):

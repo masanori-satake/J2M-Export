@@ -99,5 +99,4 @@ class Config:
         if not self.token:
             raise ValueError("token is required")
 
-        if self.base_url.endswith("/"):
-            self.base_url = self.base_url[:-1]
+        self.base_url = self.base_url.rstrip("/")

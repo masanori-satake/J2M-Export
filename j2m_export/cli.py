@@ -128,8 +128,7 @@ def main():
 
             output_path = get_unique_filename(config.output_dir, project_key, summary, key)
 
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(issue_md)
+            output_path.write_text(issue_md, encoding="utf-8")
 
             total_bytes += md_bytes
             issue_count += 1
