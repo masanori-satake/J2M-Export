@@ -165,8 +165,36 @@ def main():
         except Exception as e:
             logger.error(f"JQL search failed: {e}")
 
+    # 3. If no issues found yet but labels are specified, fetch by labels
+    if not issues_to_process and config.labels:
+        try:
+            # Construct JQL for labels
+            escaped_labels = [f'"{l}"' for l in config.labels]
+            label_jql = f"labels IN ({', '.join(escaped_labels)})"
+            logger.info(f"Fetching issues by labels JQL: {label_jql}")
+            issues_to_process = client.search_issues(label_jql)
+        except Exception as e:
+            logger.error(f"Failed to fetch issues by labels: {e}")
+
     if not issues_to_process:
         logger.warning("No issues found to process.")
+        return
+
+    # 4. Filter issues by labels if specified (post-filtering)
+    if config.labels:
+        filtered_issues = []
+        label_set = set(config.labels)
+        for issue in issues_to_process:
+            issue_labels = issue.get('fields', {}).get('labels', [])
+            # Check if any of the specified labels match exactly (case-sensitive)
+            if any(label in label_set for label in issue_labels):
+                filtered_issues.append(issue)
+
+        issues_to_process = filtered_issues
+        logger.info(f"Filtered to {len(issues_to_process)} issues matching labels: {', '.join(config.labels)}")
+
+    if not issues_to_process:
+        logger.warning("No issues found matching labels.")
         return
 
     # Process and Save

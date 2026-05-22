@@ -11,6 +11,11 @@ issue_keys:
 # または JQL を使用して対象を指定
 # jql: "project = PROJ AND status = 'In Progress'"
 
+# 対象とするラベル（指定されたいずれかに合致するものを抽出）
+# labels:
+#   - "target-label-1"
+#   - "target-label-2"
+
 # Bearerトークン
 token: "your_bearer_token_here"
 
