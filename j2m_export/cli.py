@@ -14,15 +14,15 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str) ->
     """
     Format a single issue into a Markdown string.
     """
-    fields = issue.get('fields', {})
-    rendered = issue.get('renderedFields', {})
+    fields = issue.get('fields') or {}
+    rendered = issue.get('renderedFields') or {}
 
     key = issue.get('key')
-    summary = fields.get('summary')
+    summary = fields.get('summary') or 'No Summary'
     description = rendered.get('description', fields.get('description', ''))
     project = fields.get('project', {}).get('key', 'UNKNOWN')
     status = fields.get('status', {}).get('name', 'UNKNOWN')
-    assignee = fields.get('assignee', {}).get('displayName', 'Unassigned')
+    assignee = (fields.get('assignee') or {}).get('displayName') or 'Unassigned'
     created = fields.get('created')
 
     url = f"{base_url}/browse/{key}"
@@ -135,8 +135,8 @@ def main():
             issue_count += 1
             logger.info(f"Exported {key}: {summary}")
 
-        except Exception as e:
-            logger.error(f"Failed to process issue {key}: {e}")
+        except Exception:
+            logger.exception(f"Failed to process issue {key}")
 
     logger.info("-" * 50)
     logger.info(f"Successfully exported {issue_count} issues.")

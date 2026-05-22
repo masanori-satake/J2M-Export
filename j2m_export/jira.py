@@ -37,8 +37,8 @@ class JiraClient:
                 response = self.session.request(method, url, params=params, timeout=30)
                 if response.status_code == 200:
                     return response.json()
-                elif 500 <= response.status_code < 600:
-                    logger.warning(f"Server error {response.status_code} for {url}. Retrying ({i+1}/{retries})...")
+                elif response.status_code == 429 or 500 <= response.status_code < 600:
+                    logger.warning(f"Request error {response.status_code} for {url}. Retrying ({i+1}/{retries})...")
                     time.sleep(backoff * (2 ** i))
                     continue
                 else:
