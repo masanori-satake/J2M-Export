@@ -61,6 +61,7 @@ python -m j2m_export.cli --base-url https://other-jira.com --token other_token -
 - `--base-url`: JiraのベースURL
 - `--issue-key`: エクスポートするチケットID（複数指定可能）
 - `--jql`: 対象を特定するJQLクエリ
+- `--label`: 対象とするラベル（複数指定可能。指定されたラベルのいずれかを持つチケットのみを抽出）
 - `--output-dir`: 出力先ディレクトリ
 - `--max-mb`: 出力ファイルの最大サイズ(MB)
 - `--stop-threshold-mb`: 処理を停止する閾値(MB)
@@ -92,6 +93,61 @@ python -m j2m_export.cli --base-url https://other-jira.com --token other_token -
 | `issuetype` | 課題タイプ | バグ、タスク、改善など | 可能 |
 
 ※ これら以外にも、Jira APIから取得可能な標準フィールド（カスタムフィールドを除く）は網羅的に出力されます。
+
+## 出力フィールド一覧
+
+エクスポートされる主なフィールドは以下の通りです。これら以外の標準フィールドも、値が存在すれば出力されます。
+
+| フィールド名 | Jira内部ID | 内容 |
+| :--- | :--- | :--- |
+| サマリー | `summary` | チケットのタイトル |
+| キー | `key` | チケットID (例: PROJ-123) |
+| プロジェクト | `project` | 所属プロジェクト名 |
+| ステータス | `status` | 現在のステータス |
+| 優先度 | `priority` | チケットの優先順位 |
+| 担当者 | `assignee` | 現在の担当者 |
+| 報告者 | `reporter` | チケットの作成者 |
+| 作成日 | `created` | チケットの作成日時 |
+| 更新日 | `updated` | 最終更新日時 |
+| 期限 | `duedate` | 完了予定日 |
+| 解決策 | `resolution` | 解決のステータス |
+| URL | (自動生成) | Jiraチケットへの直接リンク |
+| 説明 | `description` | チケットの詳細説明 (Markdown変換) |
+| コメント | `comment` | 投稿されたコメント履歴 (Markdown変換) |
+
+## 出力サンプル
+
+エクスポートされる Markdown ファイルの構造サンプルです。
+
+```markdown
+
+---
+# ログイン画面でエラーが発生する
+- **Key**: PROJ-123
+- **Project**: サンプルプロジェクト
+- **Status**: Open
+- **Priority**: High
+- **Assignee**: 山田 太郎
+- **Reporter**: 佐藤 次郎
+- **Created**: 2024-01-01T10:00:00.000+0900
+- **Updated**: 2024-01-02T15:30:00.000+0900
+- **URL**: https://your-jira.com/browse/PROJ-123
+
+## Description
+ログインボタンをクリックすると、500エラーが発生します。
+再現手順:
+1. トップページにアクセス
+2. ユーザー名とパスワードを入力
+3. ログインをクリック
+
+## Comments
+
+### Comment by 山田 太郎 (2024-01-02T11:00:00.000+0900)
+現在調査中です。ログを確認します。
+
+### Comment by 鈴木 花子 (2024-01-02T14:00:00.000+0900)
+特定のブラウザでのみ発生している可能性があります。
+```
 
 ---
 
