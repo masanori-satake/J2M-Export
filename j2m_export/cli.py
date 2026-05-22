@@ -107,7 +107,7 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
             author = comment.get('author', {}).get('displayName', 'Anonymous')
             created_at = comment.get('created')
 
-            # Try to get rendered comment body
+            # レンダリング済みのコメント本文の取得を試みる
             body_html = ""
             if i < len(rendered_comments):
                 body_html = rendered_comments[i].get('body')

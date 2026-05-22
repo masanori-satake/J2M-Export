@@ -56,6 +56,43 @@ python -m j2m_export.cli
 python -m j2m_export.cli --base-url https://other-jira.com --token other_token --issue-key PROJ-123
 ```
 
+## チケット収集ロジック
+
+本ツールが指定された引数に基づいてチケットを収集する際のフローは以下の通りです。
+
+```mermaid
+graph TD
+    Start([開始]) --> LoadConfig[設定の読み込み]
+    LoadConfig --> HasKeys{issue_key 指定あり?}
+
+    HasKeys -- Yes --> FetchKeys[チケットキーで取得]
+    FetchKeys --> HasJQL{jql 指定あり?}
+    HasKeys -- No --> HasJQL
+
+    HasJQL -- Yes --> FetchJQL[JQLで検索]
+    FetchJQL --> MergeIssues[リストを統合 重複排除]
+    HasJQL -- No --> MergeIssues
+
+    MergeIssues --> EmptyCheck1{チケットが見つかった?}
+
+    EmptyCheck1 -- No --> HasLabels{label 指定あり?}
+    EmptyCheck1 -- Yes --> HasLabelsPost{label 指定あり?}
+
+    HasLabels -- Yes --> FetchLabels[ラベルでJQL検索]
+    HasLabels -- No --> NoIssues([チケットなしで終了])
+
+    FetchLabels --> HasLabelsPost
+
+    HasLabelsPost -- Yes --> FilterLabels[ラベルで後続フィルタリング]
+    HasLabelsPost -- No --> ProcessIssues[チケット処理・保存]
+
+    FilterLabels --> EmptyCheck2{フィルタ後にチケットあり?}
+    EmptyCheck2 -- No --> NoIssues
+    EmptyCheck2 -- Yes --> ProcessIssues
+
+    ProcessIssues --> End([終了])
+```
+
 ## パラメータ
 
 - `--base-url`: JiraのベースURL
