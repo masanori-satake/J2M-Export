@@ -21,9 +21,9 @@ def test_config_labels_yaml(tmp_path):
 
 def test_label_filtering():
     # Mock issues
-    issue1 = {"key": "PROJ-1", "fields": {"summary": "S1", "labels": ["label1"], "project": {"key": "P"}}}
+    issue1 = {"key": "PROJ-1", "fields": {"summary": "S1", "labels": ["Label1"], "project": {"key": "P"}}}
     issue2 = {"key": "PROJ-2", "fields": {"summary": "S2", "labels": ["label2"], "project": {"key": "P"}}}
-    issue3 = {"key": "PROJ-3", "fields": {"summary": "S3", "labels": ["label3"], "project": {"key": "P"}}}
+    issue3 = {"key": "PROJ-3", "fields": {"summary": "S3", "labels": ["LABEL3"], "project": {"key": "P"}}}
 
     issues = [issue1, issue2, issue3]
 

@@ -183,10 +183,10 @@ def main():
     # 4. Filter issues by labels if specified (post-filtering)
     if config.labels:
         filtered_issues = []
-        label_set = set(config.labels)
+        label_set = {l.lower() for l in config.labels}
         for issue in issues_to_process:
-            issue_labels = issue.get('fields', {}).get('labels', [])
-            # Check if any of the specified labels match exactly (case-sensitive)
+            issue_labels = [l.lower() for l in issue.get('fields', {}).get('labels', [])]
+            # Jiraの挙動（ケースインセンシティブ）に合わせ、大文字小文字を区別せずにラベルをチェック
             if any(label in label_set for label in issue_labels):
                 filtered_issues.append(issue)
 
