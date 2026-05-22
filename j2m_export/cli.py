@@ -11,6 +11,9 @@ from .utils import get_unique_filename, bytes_to_mb, is_within_size_limit
 
 logger = logging.getLogger(__name__)
 
+# Mandatory fields that cannot be excluded
+NON_IGNORABLE_IDS = ['summary', 'project', 'status', 'assignee', 'created', 'key']
+
 def format_field_value(value: Any) -> str:
     """
     Format Jira field value based on its type.
@@ -52,9 +55,6 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     summary = fields.get('summary') or 'No Summary'
     url = f"{base_url}/browse/{key}"
 
-    # Non-ignorable fields
-    non_ignorable_ids = ['summary', 'project', 'status', 'assignee', 'created']
-
     md = f"\n---\n# {summary}\n"
     md += f"- **Key**: {key}\n"
 
@@ -65,7 +65,7 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     # 1. Output mandatory and common standard fields
     for fid in standard_order:
         if fid in processed_fields: continue
-        if fid in exclude_fields and fid not in non_ignorable_ids:
+        if fid in exclude_fields and fid not in NON_IGNORABLE_IDS:
             continue
 
         val = fields.get(fid)
@@ -77,7 +77,7 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     # 2. Output other standard fields (網羅的に出力)
     for fid, val in fields.items():
         if fid in processed_fields: continue
-        if fid in exclude_fields and fid not in non_ignorable_ids:
+        if fid in exclude_fields and fid not in NON_IGNORABLE_IDS:
             continue
 
         # Skip custom fields
@@ -138,9 +138,8 @@ def main():
     converter = MarkdownConverter(config.base_url)
 
     # Validate exclude_fields once
-    non_ignorable_ids = ['summary', 'project', 'status', 'assignee', 'created', 'key']
     for eid in config.exclude_fields:
-        if eid in non_ignorable_ids:
+        if eid in NON_IGNORABLE_IDS:
             logger.warning(f"Field '{eid}' is mandatory and cannot be excluded.")
 
     issues_to_process = []
