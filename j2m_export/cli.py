@@ -193,11 +193,40 @@ def main():
         issues_to_process = filtered_issues
         logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットを抽出しました。対象ラベル: {', '.join(config.labels)}")
 
+    # 3. If no issues found yet but labels are specified, fetch by labels
+    if not issues_to_process and config.labels:
+        try:
+            # Construct JQL for labels (escape double quotes)
+            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
+            label_jql = f"labels IN ({', '.join(escaped_labels)})"
+            logger.info(f"Fetching issues by labels JQL: {label_jql}")
+            issues_to_process = client.search_issues(label_jql)
+        except Exception as e:
+            logger.error(f"Failed to fetch issues by labels: {e}")
+
     if not issues_to_process:
         logger.warning("ラベルに合致するチケットが見つかりませんでした。")
         return
 
     # 収集したチケットの処理と保存
+    # 4. Filter issues by labels if specified (post-filtering)
+    if config.labels:
+        filtered_issues = []
+        label_set = {l.lower() for l in config.labels}
+        for issue in issues_to_process:
+            issue_labels = [l.lower() for l in issue.get('fields', {}).get('labels', [])]
+            # Jiraの挙動（ケースインセンシティブ）に合わせ、大文字小文字を区別せずにラベルをチェック
+            if any(label in label_set for label in issue_labels):
+                filtered_issues.append(issue)
+
+        issues_to_process = filtered_issues
+        logger.info(f"Filtered to {len(issues_to_process)} issues matching labels: {', '.join(config.labels)}")
+
+    if not issues_to_process:
+        logger.warning("No issues found matching labels.")
+        return
+
+    # Process and Save
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
