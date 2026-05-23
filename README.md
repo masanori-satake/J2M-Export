@@ -71,27 +71,27 @@ python -m j2m_export.cli --base-url https://other-jira.com --token other_token -
 
 ```mermaid
 graph TD
-    Start([開始]) --> LoadConfig[設定・引数の読み込み]
-    LoadConfig --> IsAdvanced{JQL指定あり?}
+    Start(["開始"]) --> LoadConfig["設定・引数の読み込み"]
+    LoadConfig --> IsAdvanced{"JQL指定あり?"}
 
-    IsAdvanced -- Yes --> FetchJQL[Advancedモード: JQLで検索]
-    FetchJQL --> ProcessIssues[チケット処理・保存]
+    IsAdvanced -- "Yes" --> FetchJQL["Advancedモード: JQLで検索"]
+    FetchJQL --> ProcessIssues["チケット処理・保存"]
 
-    IsAdvanced -- No --> HasKeys{issue_key 指定あり?}
+    IsAdvanced -- "No" --> HasKeys{"issue_key 指定あり?"}
 
-    HasKeys -- Yes --> FetchKeys[Basicモード: チケットキーで取得]
-    FetchKeys --> HasLabels{label 指定あり?}
-    HasLabels -- Yes --> FilterLabels[ラベルで絞り込み]
-    HasLabels -- No --> ProcessIssues
+    HasKeys -- "Yes" --> FetchKeys["Basicモード: チケットキーで取得"]
+    FetchKeys --> HasLabels{"label 指定あり?"}
+    HasLabels -- "Yes" --> FilterLabels["ラベルで絞り込み"]
+    HasLabels -- "No" --> ProcessIssues
     FilterLabels --> ProcessIssues
 
-    HasKeys -- No --> HasLabelsOnly{label 指定あり?}
-    HasLabelsOnly -- Yes --> FetchLabels[Basicモード: ラベルで検索]
-    HasLabelsOnly -- No --> NoIssues([ターゲットなしで終了])
+    HasKeys -- "No" --> HasLabelsOnly{"label 指定あり?"}
+    HasLabelsOnly -- "Yes" --> FetchLabels["Basicモード: ラベルで検索"]
+    HasLabelsOnly -- "No" --> NoIssues(["ターゲットなしで終了"])
 
     FetchLabels --> ProcessIssues
 
-    ProcessIssues --> End([終了])
+    ProcessIssues --> End(["終了"])
 ```
 
 ## パラメータ
