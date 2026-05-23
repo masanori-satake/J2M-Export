@@ -131,7 +131,7 @@ def main():
         config.load()
         config.validate()
     except Exception as e:
-        logger.error(f"設定の読み込みに失敗しました。j2m_config.yamlの内容や引数を確認してください。詳細: {e}")
+        logger.error(f"設定の読み込みに失敗しました（現象）。j2m_config.yamlの内容や引数を確認してください（対処方法）。詳細: {e}（原因）")
         sys.exit(1)
 
     client = JiraClient(config.base_url, config.token, config.proxy)
@@ -144,57 +144,51 @@ def main():
 
     issues_to_process = []
 
-    # 1. 指定されたチケットキーからチケットを収集
-    if config.issue_keys:
-        for key in config.issue_keys:
-            try:
-                issue = client.get_issue(key)
-                issues_to_process.append(issue)
-            except Exception as e:
-                logger.error(f"チケット {key} の取得に失敗しました。キーが正しいか、権限があるか確認してください。詳細: {e}")
-
-    # 2. JQLクエリに合致するチケットを収集
+    # 1. Advancedモード（JQL指定あり）: JQLを最優先し、他の指定は無視する
     if config.jql:
+        logger.info(f"Advancedモード: JQLクエリによるチケット取得を開始します（JQL: {config.jql}）")
         try:
-            jql_issues = client.search_issues(config.jql)
-            # チケットキーで既に取得済みの場合は重複を避ける。
-            existing_keys = {i['key'] for i in issues_to_process}
-            for issue in jql_issues:
-                if issue['key'] not in existing_keys:
-                    issues_to_process.append(issue)
+            issues_to_process = client.search_issues(config.jql)
         except Exception as e:
-            logger.error(f"JQLでのチケット検索に失敗しました。JQLクエリが正しいか確認してください。詳細: {e}")
+            logger.error(f"JQLでのチケット検索に失敗しました（現象）。JQLクエリが正しいか確認してください（対処方法）。詳細: {e}（原因）")
 
-    # 3. 指定されたキーやJQLで見つからず、ラベルが指定されている場合は、ラベルで直接取得
-    if not issues_to_process and config.labels:
-        try:
-            # ラベル用のJQLを生成（ダブルクォートをエスケープ）
-            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
-            label_jql = f"labels IN ({', '.join(escaped_labels)})"
-            logger.info(f"ラベルによるチケット取得を開始します（JQL: {label_jql}）")
-            issues_to_process = client.search_issues(label_jql)
-        except Exception as e:
-            logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
+    # 2. Basicモード（JQL指定なし）: チケットキーまたはラベルによる簡易指定
+    else:
+        # 2-1. チケットキーが指定されている場合
+        if config.issue_keys:
+            logger.info(f"Basicモード: 指定されたチケットキーからチケットを収集します")
+            for key in config.issue_keys:
+                try:
+                    issue = client.get_issue(key)
+                    issues_to_process.append(issue)
+                except Exception as e:
+                    logger.error(f"チケット {key} の取得に失敗しました（現象）。キーが正しいか、権限があるか確認してください（対処方法）。詳細: {e}（原因）")
+
+            # ラベルが指定されている場合は、取得したチケットを絞り込む
+            if config.labels:
+                filtered_issues = []
+                label_set = {l.lower() for l in config.labels}
+                for issue in issues_to_process:
+                    issue_labels = [l.lower() for l in (issue.get('fields') or {}).get('labels', [])]
+                    if any(label in label_set for label in issue_labels):
+                        filtered_issues.append(issue)
+
+                issues_to_process = filtered_issues
+                logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットに絞り込みました。対象ラベル: {', '.join(config.labels)}")
+
+        # 2-2. チケットキーがなくラベルのみ指定されている場合
+        elif config.labels:
+            try:
+                # ラベル用のJQLを生成（ダブルクォートをエスケープ）
+                escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
+                label_jql = f"labels IN ({', '.join(escaped_labels)})"
+                logger.info(f"Basicモード: ラベルによるチケット取得を開始します（JQL: {label_jql}）")
+                issues_to_process = client.search_issues(label_jql)
+            except Exception as e:
+                logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
 
     if not issues_to_process:
         logger.warning("処理対象のチケットが見つかりませんでした。")
-        return
-
-    # 4. ラベルが指定されている場合は、取得したチケットをラベルでフィルタリング（後続フィルタリング）
-    if config.labels:
-        filtered_issues = []
-        label_set = {l.lower() for l in config.labels}
-        for issue in issues_to_process:
-            issue_labels = [l.lower() for l in issue.get('fields', {}).get('labels', [])]
-            # Jiraの挙動（ケースインセンシティブ）に合わせ、大文字小文字を区別せずにラベルをチェック
-            if any(label in label_set for label in issue_labels):
-                filtered_issues.append(issue)
-
-        issues_to_process = filtered_issues
-        logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットを抽出しました。対象ラベル: {', '.join(config.labels)}")
-
-    if not issues_to_process:
-        logger.warning("ラベルに合致するチケットが見つかりませんでした。")
         return
 
     # 収集したチケットの処理と保存
@@ -206,8 +200,9 @@ def main():
 
     for issue in issues_to_process:
         key = issue['key']
-        summary = issue['fields'].get('summary', 'No Summary')
-        project_key = issue['fields'].get('project', {}).get('key', 'UNKNOWN')
+        fields = issue.get('fields') or {}
+        summary = fields.get('summary', 'No Summary')
+        project_key = fields.get('project', {}).get('key', 'UNKNOWN')
 
         try:
             issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
@@ -226,7 +221,7 @@ def main():
             logger.info(f"エクスポート完了: {key} ({summary})")
 
         except Exception as e:
-            logger.exception(f"チケット {key} の処理中にエラーが発生しました。変換処理またはファイル書き込みを確認してください。詳細: {e}")
+            logger.exception(f"チケット {key} の処理中にエラーが発生しました（現象）。変換処理またはファイル書き込みを確認してください（対処方法）。詳細: {e}（原因）")
 
     logger.info("-" * 50)
     logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")

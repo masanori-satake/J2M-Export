@@ -58,37 +58,38 @@ python -m j2m_export.cli --base-url https://other-jira.com --token other_token -
 
 ## チケット収集ロジック
 
-本ツールが指定された引数に基づいてチケットを収集する際のフローは以下の通りです。
+本ツールには、簡易的に指定する「Basicモード」と、JQLを駆使する「Advancedモード」があり、JQLの指定がある場合は常にAdvancedモードが優先されます。
+また、チケット選択に関する引数（jql, issue_key, label）が一つでもコマンドライン引数で指定された場合、設定ファイル内のチケット選択設定はすべて無視されます。
+
+### Advancedモード
+`jql` が指定されている場合に有効になります。指定されたJQLクエリのみを使用してチケットを収集し、`issue_key` や `label` の指定は無視されます。
+
+### Basicモード
+`jql` が指定されていない場合に有効になります。
+- `issue_key` が指定されている場合：指定されたキーのチケットを収集します。`label` も指定されている場合は、そのラベルを持つチケットのみに絞り込まれます。
+- `label` のみが指定されている場合：そのラベルを持つチケットをJQL検索で収集します。
 
 ```mermaid
 graph TD
-    Start([開始]) --> LoadConfig[設定の読み込み]
-    LoadConfig --> HasKeys{issue_key 指定あり?}
+    Start([開始]) --> LoadConfig[設定・引数の読み込み]
+    LoadConfig --> IsAdvanced{JQL指定あり?}
 
-    HasKeys -- Yes --> FetchKeys[チケットキーで取得]
-    FetchKeys --> HasJQL{jql 指定あり?}
-    HasKeys -- No --> HasJQL
+    IsAdvanced -- Yes --> FetchJQL[Advancedモード: JQLで検索]
+    FetchJQL --> ProcessIssues[チケット処理・保存]
 
-    HasJQL -- Yes --> FetchJQL[JQLで検索]
-    FetchJQL --> MergeIssues[リストを統合 重複排除]
-    HasJQL -- No --> MergeIssues
+    IsAdvanced -- No --> HasKeys{issue_key 指定あり?}
 
-    MergeIssues --> EmptyCheck1{チケットが見つかった?}
+    HasKeys -- Yes --> FetchKeys[Basicモード: チケットキーで取得]
+    FetchKeys --> HasLabels{label 指定あり?}
+    HasLabels -- Yes --> FilterLabels[ラベルで絞り込み]
+    HasLabels -- No --> ProcessIssues
+    FilterLabels --> ProcessIssues
 
-    EmptyCheck1 -- No --> HasLabels{label 指定あり?}
-    EmptyCheck1 -- Yes --> HasLabelsPost{label 指定あり?}
+    HasKeys -- No --> HasLabelsOnly{label 指定あり?}
+    HasLabelsOnly -- Yes --> FetchLabels[Basicモード: ラベルで検索]
+    HasLabelsOnly -- No --> NoIssues([ターゲットなしで終了])
 
-    HasLabels -- Yes --> FetchLabels[ラベルでJQL検索]
-    HasLabels -- No --> NoIssues([チケットなしで終了])
-
-    FetchLabels --> HasLabelsPost
-
-    HasLabelsPost -- Yes --> FilterLabels[ラベルで後続フィルタリング]
-    HasLabelsPost -- No --> ProcessIssues[チケット処理・保存]
-
-    FilterLabels --> EmptyCheck2{フィルタ後にチケットあり?}
-    EmptyCheck2 -- No --> NoIssues
-    EmptyCheck2 -- Yes --> ProcessIssues
+    FetchLabels --> ProcessIssues
 
     ProcessIssues --> End([終了])
 ```
