@@ -104,9 +104,13 @@ class Config:
         cli_args = parser.parse_args()
 
         if cli_args.base_url: self.base_url = cli_args.base_url
-        if cli_args.issue_key: self.issue_keys = cli_args.issue_key
-        if cli_args.label: self.labels = cli_args.label
-        if cli_args.jql: self.jql = cli_args.jql
+
+        # チケット選択引数（jql, issue_key, label）が一つでもCLIで指定されたら、設定ファイルの設定をすべて無視する。
+        if cli_args.issue_key or cli_args.label or cli_args.jql:
+            self.issue_keys = cli_args.issue_key if cli_args.issue_key else []
+            self.labels = cli_args.label if cli_args.label else []
+            self.jql = cli_args.jql
+
         if cli_args.output_dir: self.output_dir = cli_args.output_dir
         if cli_args.max_mb is not None: self.max_mb = cli_args.max_mb
         if cli_args.stop_threshold_mb is not None: self.stop_threshold_mb = cli_args.stop_threshold_mb
