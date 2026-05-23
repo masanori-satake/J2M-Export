@@ -169,7 +169,7 @@ def main():
                 filtered_issues = []
                 label_set = {l.lower() for l in config.labels}
                 for issue in issues_to_process:
-                    issue_labels = [l.lower() for l in issue.get('fields', {}).get('labels', [])]
+                    issue_labels = [l.lower() for l in (issue.get('fields') or {}).get('labels', [])]
                     if any(label in label_set for label in issue_labels):
                         filtered_issues.append(issue)
 
@@ -200,8 +200,9 @@ def main():
 
     for issue in issues_to_process:
         key = issue['key']
-        summary = issue['fields'].get('summary', 'No Summary')
-        project_key = issue['fields'].get('project', {}).get('key', 'UNKNOWN')
+        fields = issue.get('fields') or {}
+        summary = fields.get('summary', 'No Summary')
+        project_key = fields.get('project', {}).get('key', 'UNKNOWN')
 
         try:
             issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
