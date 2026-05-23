@@ -131,7 +131,7 @@ def main():
         config.load()
         config.validate()
     except Exception as e:
-        logger.error(f"設定の読み込みに失敗しました。j2m_config.yamlの内容や引数を確認してください。詳細: {e}")
+        logger.error(f"設定の読み込みに失敗しました（現象）。j2m_config.yamlの内容や引数を確認してください（対処方法）。詳細: {e}（原因）")
         sys.exit(1)
 
     client = JiraClient(config.base_url, config.token, config.proxy)
@@ -150,7 +150,7 @@ def main():
         try:
             issues_to_process = client.search_issues(config.jql)
         except Exception as e:
-            logger.error(f"JQLでのチケット検索に失敗しました。JQLクエリが正しいか確認してください。詳細: {e}")
+            logger.error(f"JQLでのチケット検索に失敗しました（現象）。JQLクエリが正しいか確認してください（対処方法）。詳細: {e}（原因）")
 
     # 2. Basicモード（JQL指定なし）: チケットキーまたはラベルによる簡易指定
     else:
@@ -162,7 +162,7 @@ def main():
                     issue = client.get_issue(key)
                     issues_to_process.append(issue)
                 except Exception as e:
-                    logger.error(f"チケット {key} の取得に失敗しました。キーが正しいか、権限があるか確認してください。詳細: {e}")
+                    logger.error(f"チケット {key} の取得に失敗しました（現象）。キーが正しいか、権限があるか確認してください（対処方法）。詳細: {e}（原因）")
 
             # ラベルが指定されている場合は、取得したチケットを絞り込む
             if config.labels:
@@ -185,7 +185,7 @@ def main():
                 logger.info(f"Basicモード: ラベルによるチケット取得を開始します（JQL: {label_jql}）")
                 issues_to_process = client.search_issues(label_jql)
             except Exception as e:
-                logger.error(f"ラベルによるチケット取得に失敗しました（現象）。詳細: {e}（原因）")
+                logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
 
     if not issues_to_process:
         logger.warning("処理対象のチケットが見つかりませんでした。")
@@ -220,7 +220,7 @@ def main():
             logger.info(f"エクスポート完了: {key} ({summary})")
 
         except Exception as e:
-            logger.exception(f"チケット {key} の処理中にエラーが発生しました。変換処理またはファイル書き込みを確認してください。詳細: {e}")
+            logger.exception(f"チケット {key} の処理中にエラーが発生しました（現象）。変換処理またはファイル書き込みを確認してください（対処方法）。詳細: {e}（原因）")
 
     logger.info("-" * 50)
     logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")
