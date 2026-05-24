@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 def test_config_labels_cli():
-    with patch("sys.argv", ["prog", "--base-url", "http://test", "--token", "test", "--label", "label1", "label2"]):
+    with patch("sys.argv", ["prog", "--base-url", "http://test", "--token", "test", "--labels", "label1", "label2"]):
         config = Config()
         config.load()
         assert config.labels == ["label1", "label2"]
