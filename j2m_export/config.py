@@ -51,7 +51,7 @@ class Config:
                         keys = file_config.get("issue_keys")
                         if keys:
                             if isinstance(keys, list):
-                                self.issue_keys = [str(k) for k in keys]
+                                self.issue_keys = [str(k).strip() for k in keys]
                             else:
                                 logger.warning("issue_keys はリスト形式で指定してください。")
 
