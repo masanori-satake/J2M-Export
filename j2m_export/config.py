@@ -115,7 +115,7 @@ class Config:
         if cli_args.max_mb is not None: self.max_mb = cli_args.max_mb
         if cli_args.stop_threshold_mb is not None: self.stop_threshold_mb = cli_args.stop_threshold_mb
         if cli_args.exclude_fields:
-            self.exclude_fields = cli_args.exclude_fields
+            self.exclude_fields = [f.strip() for f in cli_args.exclude_fields]
         if cli_args.proxy: self.proxy = cli_args.proxy
         if cli_args.token: self.token = cli_args.token
 
