@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import logging
@@ -206,6 +207,11 @@ def main():
         logger.error(f"出力ディレクトリの作成に失敗しました（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {e}（原因）")
         sys.exit(1)
 
+    # ディレクトリ自体の書き込み権限チェック
+    if not os.access(output_dir, os.W_OK):
+        logger.error(f"出力ディレクトリへの書き込み権限がありません（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {output_dir}（原因）")
+        sys.exit(1)
+
     issue_path_map = {}
     planned_paths = set()
     for issue in issues_to_process:
@@ -227,19 +233,9 @@ def main():
             logger.error(f"出力ファイルが既に存在します（現象）。上書きを許可するか、既存のファイルを移動してください（対処方法）。詳細: {output_path}（原因）")
             sys.exit(1)
 
-        # ファイルの書き込み権限チェック (新規作成または上書きが可能か)
-        try:
-            if output_path.exists():
-                # 既存ファイルが書き込み可能かチェック
-                with open(output_path, 'a', encoding='utf-8'):
-                    pass
-            else:
-                # 新規作成可能かチェック（実際に作成してすぐ削除、または親ディレクトリの権限チェック）
-                with open(output_path, 'w', encoding='utf-8'):
-                    pass
-                output_path.unlink()
-        except Exception as e:
-            logger.error(f"ファイルへの書き込み権限がありません（現象）。ファイルがロックされていないか、ディレクトリの権限を確認してください（対処方法）。詳細: {output_path}, {e}（原因）")
+        # 既存ファイルがある場合の上書き権限チェック
+        if output_path.exists() and not os.access(output_path, os.W_OK):
+            logger.error(f"既存ファイルへの書き込み権限がありません（現象）。ファイルがロックされていないか確認してください（対処方法）。詳細: {output_path}（原因）")
             sys.exit(1)
 
         issue_path_map[key] = output_path
