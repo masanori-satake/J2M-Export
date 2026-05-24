@@ -107,8 +107,8 @@ class Config:
 
         # チケット選択引数（jql, issue_keys, labels）が一つでもCLIで指定されたら、設定ファイルの設定をすべて無視する。
         if cli_args.issue_keys or cli_args.labels or cli_args.jql:
-            self.issue_keys = cli_args.issue_keys if cli_args.issue_keys else []
-            self.labels = cli_args.labels if cli_args.labels else []
+            self.issue_keys = [k.strip() for k in cli_args.issue_keys] if cli_args.issue_keys else []
+            self.labels = [l.strip() for l in cli_args.labels] if cli_args.labels else []
             self.jql = cli_args.jql
 
         if cli_args.output_dir: self.output_dir = cli_args.output_dir
