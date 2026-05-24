@@ -58,7 +58,7 @@ class Config:
                         lbls = file_config.get("labels")
                         if lbls:
                             if isinstance(lbls, list):
-                                self.labels = [str(l) for l in lbls]
+                                self.labels = [str(l).strip() for l in lbls]
                             else:
                                 logger.warning("labels はリスト形式で指定してください。")
 
