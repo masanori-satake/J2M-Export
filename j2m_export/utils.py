@@ -15,8 +15,15 @@ def get_unique_filename(output_dir: str, project_key: str, summary: str, issue_k
     """エクスポート用のファイル名を生成する。
 
     命名規則: 【プロジェクトキー】 サマリー (チケットキー)<suffix>.md
+    サマリーが長い場合は、プロジェクトキーとチケットキーが残るようにサマリー側を切り詰める。
     """
-    base_name = f"【{project_key}】 {summary} ({issue_key})"
+    # 固定部分の長さを計算 (【】、スペース、カッコ)
+    fixed_parts_len = len(f"【{project_key}】  ({issue_key})")
+    # 全体で100文字に収めるためのサマリーの最大長
+    max_summary_len = max(0, 100 - fixed_parts_len)
+    safe_summary = summary[:max_summary_len].strip()
+
+    base_name = f"【{project_key}】 {safe_summary} ({issue_key})"
     sanitized_name = sanitize_filename(base_name)
 
     return Path(output_dir) / f"{sanitized_name}{suffix}.md"

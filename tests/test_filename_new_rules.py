@@ -29,20 +29,19 @@ def test_get_unique_filename_sanitization():
     # base_name = "【PROJ】 サマリー  禁止文字    (PROJ-1)"
     assert str(path) == "output/【PROJ】 サマリー  禁止文字    (PROJ-1).md"
 
-def test_get_unique_filename_collision_due_to_truncation():
-    # 非常に長いサマリーにより、チケットキーの部分が削られるケースのシミュレーション
+def test_get_unique_filename_no_collision_due_to_truncation():
+    # 非常に長いサマリーがあっても、チケットキーが残るように改善されたか確認
     output_dir = "output"
     project_key = "PROJ"
-    # 100文字制限
-    # "【PROJ】 " (7文字)
-    # 残り93文字。サマリーが100文字あると、(PROJ-1) の部分は削られる
-    long_summary = "A" * 100
+    long_summary = "A" * 200
     issue_key_1 = "PROJ-1"
     issue_key_2 = "PROJ-2"
 
     path1 = get_unique_filename(output_dir, project_key, long_summary, issue_key_1)
     path2 = get_unique_filename(output_dir, project_key, long_summary, issue_key_2)
 
-    # サマリーが長すぎて (PROJ-1) や (PROJ-2) が削られる場合、同じファイル名になる
-    assert path1 == path2
-    assert len(path1.stem) == 100
+    # チケットキーが保持されるため、衝突しないはず
+    assert path1 != path2
+    assert "(PROJ-1)" in path1.name
+    assert "(PROJ-2)" in path2.name
+    assert len(path1.stem) <= 100
