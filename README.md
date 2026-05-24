@@ -53,21 +53,44 @@ python -m j2m_export.cli
 引数で上書きして実行:
 
 ```bash
-python -m j2m_export.cli --base-url https://other-jira.com --token other_token --issue-key PROJ-123
+python -m j2m_export.cli --base-url https://other-jira.com --token other_token --issue-keys PROJ-123 PROJ-456
 ```
 
 ## チケット収集ロジック
 
 本ツールには、簡易的に指定する「Basicモード」と、JQLを駆使する「Advancedモード」があり、JQLの指定がある場合は常にAdvancedモードが優先されます。
-また、チケット選択に関する引数（jql, issue_key, label）が一つでもコマンドライン引数で指定された場合、設定ファイル内のチケット選択設定はすべて無視されます。
+また、チケット選択に関する引数（jql, issue_keys, labels）が一つでもコマンドライン引数で指定された場合、設定ファイル内のチケット選択設定はすべて無視されます。
 
 ### Advancedモード
-`jql` が指定されている場合に有効になります。指定されたJQLクエリのみを使用してチケットを収集し、`issue_key` や `label` の指定は無視されます。
+`jql` が指定されている場合に有効になります。指定されたJQLクエリのみを使用してチケットを収集し、`issue_keys` や `labels` の指定は無視されます。
 
 ### Basicモード
-`jql` が指定されていない場合に有効になります。
-- `issue_key` が指定されている場合：指定されたキーのチケットを収集します。`label` も指定されている場合は、そのラベルを持つチケットのみに絞り込まれます。
-- `label` のみが指定されている場合：そのラベルを持つチケットをJQL検索で収集します。
+`jql` が指定されていない場合に有効になります。チケットキー（`issue_keys`）やラベル（`labels`）を組み合わせて対象を絞り込みます。
+
+#### 1. チケットキー（issue_keys）による指定
+特定のチケットを直接指定してエクスポートします。複数をスペース区切り（CLI）またはリスト形式（YAML）で指定可能です。
+- **CLI**: `--issue-keys PROJ-1 PROJ-2`
+- **YAML**:
+  ```yaml
+  issue_keys:
+    - "PROJ-1"
+    - "PROJ-2"
+  ```
+
+#### 2. ラベル（labels）による指定
+指定したラベルの**いずれか**を持つチケットを抽出します（OR条件）。
+- **CLI**: `--labels target-a target-b`
+- **YAML**:
+  ```yaml
+  labels:
+    - "target-a"
+    - "target-b"
+  ```
+
+#### 3. キーとラベルの組み合わせ
+`issue_keys` と `labels` の両方を指定した場合、**指定したキーのチケットの中で、さらに指定したラベルのいずれかを持つもの**だけが抽出されます（Keys と Labels の間は AND条件）。
+
+例：`PROJ-1` (ラベル: `A`), `PROJ-2` (ラベル: `B`) があるとき、`--issue-keys PROJ-1 PROJ-2 --labels A` と指定すると、`PROJ-1` のみがエクスポートされます。
 
 ```mermaid
 graph TD
@@ -77,15 +100,15 @@ graph TD
     IsAdvanced -- "Yes" --> FetchJQL["Advancedモード: JQLで検索"]
     FetchJQL --> ProcessIssues["チケット処理・保存"]
 
-    IsAdvanced -- "No" --> HasKeys{"issue_key 指定あり?"}
+    IsAdvanced -- "No" --> HasKeys{"issue_keys 指定あり?"}
 
     HasKeys -- "Yes" --> FetchKeys["Basicモード: チケットキーで取得"]
-    FetchKeys --> HasLabels{"label 指定あり?"}
+    FetchKeys --> HasLabels{"labels 指定あり?"}
     HasLabels -- "Yes" --> FilterLabels["ラベルで絞り込み"]
     HasLabels -- "No" --> ProcessIssues
     FilterLabels --> ProcessIssues
 
-    HasKeys -- "No" --> HasLabelsOnly{"label 指定あり?"}
+    HasKeys -- "No" --> HasLabelsOnly{"labels 指定あり?"}
     HasLabelsOnly -- "Yes" --> FetchLabels["Basicモード: ラベルで検索"]
     HasLabelsOnly -- "No" --> NoIssues(["ターゲットなしで終了"])
 
@@ -97,16 +120,16 @@ graph TD
 ## パラメータ
 
 - `--base-url`: JiraのベースURL
-- `--issue-key`: エクスポートするチケットID（複数指定可能）
+- `--issue-keys`: エクスポートするチケットID（複数指定可能。スペース区切り）
 - `--jql`: 対象を特定するJQLクエリ
-- `--label`: 対象とするラベル（複数指定可能。指定されたラベルのいずれかを持つチケットのみを抽出）
+- `--labels`: 対象とするラベル（複数指定可能。スペース区切り。指定されたラベルのいずれかを持つチケットのみを抽出）
 - `--output-dir`: 出力先ディレクトリ
 - `--max-mb`: 出力ファイルの最大サイズ(MB)
 - `--stop-threshold-mb`: 処理を停止する閾値(MB)
 - `--proxy`: プロキシURL
 - `--config`: 設定ファイルパス
 - `--token`: Bearerトークン
-- `--exclude-fields`: 除外するフィールドの内部ID（カンマ区切り）
+- `--exclude-fields`: 除外するフィールドの内部ID（複数指定可能。スペース区切り）
 
 ## ファイル名規則
 
