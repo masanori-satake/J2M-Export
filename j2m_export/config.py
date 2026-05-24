@@ -70,7 +70,7 @@ class Config:
                         exclude = file_config.get("exclude_fields")
                         if exclude:
                             if isinstance(exclude, list):
-                                self.exclude_fields = [str(e) for e in exclude]
+                                self.exclude_fields = [str(e).strip() for e in exclude]
                             else:
                                 logger.warning("exclude_fields はリスト形式で指定してください。")
 
