@@ -11,20 +11,15 @@ def sanitize_filename(name: str) -> str:
     # 前後の空白を削除し、長さを100文字以内に制限する
     return name.strip()[:100]
 
-def get_unique_filename(output_dir: str, project_key: str, summary: str, issue_key: str) -> Path:
-    """エクスポート用のユニークなファイル名を生成する。
+def get_unique_filename(output_dir: str, project_key: str, summary: str, issue_key: str, suffix: str = "") -> Path:
+    """エクスポート用のファイル名を生成する。
 
-    同名のファイルが存在する場合は、チケットキーを付加して衝突を避ける。
+    命名規則: 【プロジェクトキー】 サマリー (チケットキー)<suffix>.md
     """
-    base_name = f"【{project_key}】 {summary}"
+    base_name = f"【{project_key}】 {summary} ({issue_key})"
     sanitized_name = sanitize_filename(base_name)
 
-    path = Path(output_dir) / f"{sanitized_name}.md"
-    if path.exists():
-        # 同名のファイルが存在する場合は、末尾にチケットキーを付与する
-        path = Path(output_dir) / f"{sanitized_name} ({issue_key}).md"
-
-    return path
+    return Path(output_dir) / f"{sanitized_name}{suffix}.md"
 
 def bytes_to_mb(bytes_count: int) -> float:
     return bytes_count / (1024 * 1024)

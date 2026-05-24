@@ -1,6 +1,7 @@
 import sys
 import json
 import logging
+import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -191,10 +192,59 @@ def main():
         logger.warning("処理対象のチケットが見つかりませんでした。")
         return
 
-    # 収集したチケットの処理と保存
-    output_dir = Path(config.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Suffixの生成（非上書き時のみ使用）
+    suffix = ""
+    if not config.overwrite:
+        now = datetime.datetime.now()
+        suffix = now.strftime("_%y%m%d_%H%M%S")
 
+    # 書き込み可否の事前チェック
+    output_dir = Path(config.output_dir)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.error(f"出力ディレクトリの作成に失敗しました（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {e}（原因）")
+        sys.exit(1)
+
+    issue_path_map = {}
+    planned_paths = set()
+    for issue in issues_to_process:
+        key = issue['key']
+        fields = issue.get('fields') or {}
+        summary = fields.get('summary', 'No Summary')
+        project_key = fields.get('project', {}).get('key', 'UNKNOWN')
+
+        output_path = get_unique_filename(config.output_dir, project_key, summary, key, suffix)
+
+        # 同一実行内でのファイル名衝突チェック
+        if output_path in planned_paths:
+            logger.error(f"同一実行内で出力ファイル名が重複しています（現象）。チケットのサマリー等を確認してください（対処方法）。詳細: {output_path}（原因）")
+            sys.exit(1)
+        planned_paths.add(output_path)
+
+        # 上書き禁止時に既にファイルが存在する場合
+        if not config.overwrite and output_path.exists():
+            logger.error(f"出力ファイルが既に存在します（現象）。上書きを許可するか、既存のファイルを移動してください（対処方法）。詳細: {output_path}（原因）")
+            sys.exit(1)
+
+        # ファイルの書き込み権限チェック (新規作成または上書きが可能か)
+        try:
+            if output_path.exists():
+                # 既存ファイルが書き込み可能かチェック
+                with open(output_path, 'a', encoding='utf-8'):
+                    pass
+            else:
+                # 新規作成可能かチェック（実際に作成してすぐ削除、または親ディレクトリの権限チェック）
+                with open(output_path, 'w', encoding='utf-8'):
+                    pass
+                output_path.unlink()
+        except Exception as e:
+            logger.error(f"ファイルへの書き込み権限がありません（現象）。ファイルがロックされていないか、ディレクトリの権限を確認してください（対処方法）。詳細: {output_path}, {e}（原因）")
+            sys.exit(1)
+
+        issue_path_map[key] = output_path
+
+    # 収集したチケットの処理と保存
     total_bytes = 0
     issue_count = 0
 
@@ -202,17 +252,22 @@ def main():
         key = issue['key']
         fields = issue.get('fields') or {}
         summary = fields.get('summary', 'No Summary')
-        project_key = fields.get('project', {}).get('key', 'UNKNOWN')
+        output_path = issue_path_map[key]
 
+        # チケット情報の変換（失敗しても後続を継続する）
         try:
             issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
+        except Exception as e:
+            logger.error(f"チケット {key} の変換処理中にエラーが発生しました（現象）。Jiraからの取得データを確認してください（対処方法）。詳細: {e}（原因）")
+            continue
+
+        # ファイルへの書き込み（失敗した場合は即時終了する）
+        try:
             md_bytes = len(issue_md.encode('utf-8'))
 
             if not is_within_size_limit(total_bytes + md_bytes, config.stop_threshold_mb):
                 logger.warning(f"停止閾値 ({config.stop_threshold_mb}MB) に達したため、エクスポートを中断します。")
                 break
-
-            output_path = get_unique_filename(config.output_dir, project_key, summary, key)
 
             output_path.write_text(issue_md, encoding="utf-8")
 
@@ -221,7 +276,8 @@ def main():
             logger.info(f"エクスポート完了: {key} ({summary})")
 
         except Exception as e:
-            logger.exception(f"チケット {key} の処理中にエラーが発生しました（現象）。変換処理またはファイル書き込みを確認してください（対処方法）。詳細: {e}（原因）")
+            logger.error(f"チケット {key} のファイル出力中にエラーが発生しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）")
+            sys.exit(1)
 
     logger.info("-" * 50)
     logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")

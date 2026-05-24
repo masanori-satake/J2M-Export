@@ -35,3 +35,7 @@ stop_threshold_mb: 95.0
 
 # HTTP/HTTPS プロキシURL
 # proxy: "http://proxy.example.com:8080"
+
+# 同名ファイルが存在する場合に上書きする (既定: false)
+# false の場合はファイル名に年月日時分秒のSuffixが付与されます
+overwrite: false
