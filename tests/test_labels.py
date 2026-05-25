@@ -79,7 +79,7 @@ def test_labels_only_fetching():
         assert mock_write.call_count == 1
 
 def test_labels_escaping_fetching():
-    issue1 = {"key": "PROJ-1", "fields": {"summary": "S1", "labels": ["label\"with\"quotes"], "project": {"key": "P"}}}
+    issue1 = {"key": "PROJ-1", "fields": {"summary": "S1", "labels": ["label\"with\"quotes and \\backslashes\\"], "project": {"key": "P"}}}
 
     with patch("j2m_export.cli.Config") as MockConfig, \
          patch("j2m_export.cli.JiraClient") as MockClient, \
@@ -91,7 +91,7 @@ def test_labels_escaping_fetching():
         mock_config.token = "test"
         mock_config.output_dir = "output"
         mock_config.proj_keys = []
-        mock_config.labels = ["label\"with\"quotes"]
+        mock_config.labels = ["label\"with\"quotes and \\backslashes\\"]
         mock_config.jql = None
         mock_config.exclude_fields = []
         mock_config.stop_threshold_mb = 100
@@ -103,6 +103,6 @@ def test_labels_escaping_fetching():
 
         main()
 
-        # Should call search_issues with escaped double quotes
-        mock_client.search_issues.assert_called_with('labels IN ("label\\"with\\"quotes")')
+        # Should call search_issues with escaped double quotes and backslashes
+        mock_client.search_issues.assert_called_with('labels IN ("label\\"with\\"quotes and \\\\backslashes\\\\")')
         assert mock_write.call_count == 1

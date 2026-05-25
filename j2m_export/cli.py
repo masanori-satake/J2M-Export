@@ -158,11 +158,11 @@ def main():
     else:
         basic_jql_parts = []
         if config.proj_keys:
-            escaped_projs = [f'"{p.replace("\"", "\\\"")}"' for p in config.proj_keys]
+            escaped_projs = [f'"{p.replace("\\", "\\\\").replace("\"", "\\\"")}"' for p in config.proj_keys]
             basic_jql_parts.append(f"project IN ({', '.join(escaped_projs)})")
 
         if config.labels:
-            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
+            escaped_labels = [f'"{l.replace("\\", "\\\\").replace("\"", "\\\"")}"' for l in config.labels]
             basic_jql_parts.append(f"labels IN ({', '.join(escaped_labels)})")
 
         if basic_jql_parts:
