@@ -158,9 +158,11 @@ def main():
     else:
         # 2-1. チケットキーが指定されている場合
         if config.issue_keys:
-            logger.info(f"Basicモード: 指定されたチケットキーからチケットを収集します")
-            for key in config.issue_keys:
+            total_keys = len(config.issue_keys)
+            logger.info(f"Basicモード: 指定されたチケットキーからチケットを収集します（合計: {total_keys} 件）")
+            for i, key in enumerate(config.issue_keys, 1):
                 try:
+                    logger.info(f"[{i}/{total_keys}] チケット取得中: {key}")
                     issue = client.get_issue(key)
                     issues_to_process.append(issue)
                 except Exception as e:
@@ -214,6 +216,7 @@ def main():
 
     issue_path_map = {}
     planned_paths = set()
+    logger.info(f"合計 {len(issues_to_process)} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
     for issue in issues_to_process:
         key = issue['key']
         fields = issue.get('fields') or {}
@@ -243,8 +246,9 @@ def main():
     # 収集したチケットの処理と保存
     total_bytes = 0
     issue_count = 0
+    total_to_process = len(issues_to_process)
 
-    for issue in issues_to_process:
+    for i, issue in enumerate(issues_to_process, 1):
         key = issue['key']
         fields = issue.get('fields') or {}
         summary = fields.get('summary', 'No Summary')
@@ -269,7 +273,7 @@ def main():
 
             total_bytes += md_bytes
             issue_count += 1
-            logger.info(f"エクスポート完了: {key} ({summary})")
+            logger.info(f"[{i}/{total_to_process}] エクスポート完了: {key} ({summary})")
 
         except Exception as e:
             logger.error(f"チケット {key} のファイル出力中にエラーが発生しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）")
