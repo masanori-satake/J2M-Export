@@ -7,9 +7,10 @@ Jira Data Center のチケット情報を REST API で取得し、AIナレッジ
 - Jira Data Center v10.3.9 対応 (REST API)
 - チケットの「説明」や「コメント」を Markdown に変換
 - JQL による一括エクスポート対応
-- 特定のチケットキー指定によるエクスポート対応
+- プロジェクト単位の一括エクスポート対応
+- 複数チケットの情報を単一（またはサイズ上限ごとの複数）ファイルに結合出力
 - HTTP/HTTPS Proxy (CONNECTトンネル) 対応
-- 出力ファイルサイズ制限機能
+- 出力ファイルサイズ制限機能（1ファイルあたりの上限および実行全体の上限）
 
 ## セットアップ
 
@@ -34,9 +35,8 @@ cp j2m_config_sample.yaml j2m_config.yaml
 ```yaml
 base_url: "https://your-jira.com"
 token: "your_bearer_token_here"
-issue_keys:
-  - "PROJ-1"
-  - "PROJ-2"
+proj_keys:
+  - "PROJ"
 # または JQL を使用
 # jql: "project = PROJ AND status = Done"
 output_dir: "output"
@@ -53,28 +53,28 @@ python -m j2m_export.cli
 引数で上書きして実行:
 
 ```bash
-python -m j2m_export.cli --base-url https://other-jira.com --token other_token --issue-keys PROJ-123 PROJ-456
+python -m j2m_export.cli --base-url https://other-jira.com --token other_token --proj-keys PROJ OTHER
 ```
 
 ## チケット収集ロジック
 
 本ツールには、簡易的に指定する「Basicモード」と、JQLを駆使する「Advancedモード」があり、JQLの指定がある場合は常にAdvancedモードが優先されます。
-また、チケット選択に関する引数（jql, issue_keys, labels）が一つでもコマンドライン引数で指定された場合、設定ファイル内のチケット選択設定はすべて無視されます。
+また、チケット選択に関する引数（jql, proj_keys, labels）が一つでもコマンドライン引数で指定された場合、設定ファイル内のチケット選択設定はすべて無視されます。
 
 ### Advancedモード
-`jql` が指定されている場合に有効になります。指定されたJQLクエリのみを使用してチケットを収集し、`issue_keys` や `labels` の指定は無視されます。
+`jql` が指定されている場合に有効になります。指定されたJQLクエリのみを使用してチケットを収集し、`proj_keys` や `labels` の指定は無視されます。
 
 ### Basicモード
-`jql` が指定されていない場合に有効になります。チケットキー（`issue_keys`）やラベル（`labels`）を組み合わせて対象を絞り込みます。
+`jql` が指定されていない場合に有効になります。プロジェクトキー（`proj_keys`）やラベル（`labels`）を組み合わせて対象を絞り込みます。
 
-#### 1. チケットキー（issue_keys）による指定
-特定のチケットを直接指定してエクスポートします。複数をスペース区切り（CLI）またはリスト形式（YAML）で指定可能です。
-- **CLI**: `--issue-keys PROJ-1 PROJ-2`
+#### 1. プロジェクトキー（proj_keys）による指定
+指定したプロジェクトに含まれるすべてのチケットを取得します。複数をスペース区切り（CLI）またはリスト形式（YAML）で指定可能です（複数指定時はOR条件）。
+- **CLI**: `--proj-keys PROJ1 PROJ2`
 - **YAML**:
   ```yaml
-  issue_keys:
-    - "PROJ-1"
-    - "PROJ-2"
+  proj_keys:
+    - "PROJ1"
+    - "PROJ2"
   ```
 
 #### 2. ラベル（labels）による指定
@@ -87,10 +87,8 @@ python -m j2m_export.cli --base-url https://other-jira.com --token other_token -
     - "target-b"
   ```
 
-#### 3. キーとラベルの組み合わせ
-`issue_keys` と `labels` の両方を指定した場合、**指定したキーのチケットの中で、さらに指定したラベルのいずれかを持つもの**だけが抽出されます（Keys と Labels の間は AND条件）。
-
-例：`PROJ-1` (ラベル: `A`), `PROJ-2` (ラベル: `B`) があるとき、`--issue-keys PROJ-1 PROJ-2 --labels A` と指定すると、`PROJ-1` のみがエクスポートされます。
+#### 3. プロジェクトキーとラベルの組み合わせ
+`proj_keys` と `labels` の両方を指定した場合、**指定したプロジェクトのいずれかに属し、かつ指定したラベルのいずれかを持つもの**だけが抽出されます（プロジェクトとラベルの間は AND条件）。
 
 ```mermaid
 graph TD
@@ -98,21 +96,14 @@ graph TD
     LoadConfig --> IsAdvanced{"JQL指定あり?"}
 
     IsAdvanced -- "Yes" --> FetchJQL["Advancedモード: JQLで検索"]
-    FetchJQL --> ProcessIssues["チケット処理・保存"]
+    FetchJQL --> ProcessIssues["チケット処理・結合保存"]
 
-    IsAdvanced -- "No" --> HasKeys{"issue_keys 指定あり?"}
+    IsAdvanced -- "No" --> HasParams{"proj_keys または labels 指定あり?"}
 
-    HasKeys -- "Yes" --> FetchKeys["Basicモード: チケットキーで取得"]
-    FetchKeys --> HasLabels{"labels 指定あり?"}
-    HasLabels -- "Yes" --> FilterLabels["ラベルで絞り込み"]
-    HasLabels -- "No" --> ProcessIssues
-    FilterLabels --> ProcessIssues
+    HasParams -- "Yes" --> FetchBasic["Basicモード: プロジェクト・ラベルで検索"]
+    FetchBasic --> ProcessIssues
 
-    HasKeys -- "No" --> HasLabelsOnly{"labels 指定あり?"}
-    HasLabelsOnly -- "Yes" --> FetchLabels["Basicモード: ラベルで検索"]
-    HasLabelsOnly -- "No" --> NoIssues(["ターゲットなしで終了"])
-
-    FetchLabels --> ProcessIssues
+    HasParams -- "No" --> NoIssues(["ターゲットなしで終了"])
 
     ProcessIssues --> End(["終了"])
 ```
@@ -120,12 +111,12 @@ graph TD
 ## パラメータ
 
 - `--base-url`: JiraのベースURL
-- `--issue-keys`: エクスポートするチケットID（複数指定可能。スペース区切り）
+- `--proj-keys`: 対象とするプロジェクトキー（複数指定可能。スペース区切り）
 - `--jql`: 対象を特定するJQLクエリ
 - `--labels`: 対象とするラベル（複数指定可能。スペース区切り。指定されたラベルのいずれかを持つチケットのみを抽出）
 - `--output-dir`: 出力先ディレクトリ
-- `--max-mb`: 出力ファイルの最大サイズ(MB)
-- `--stop-threshold-mb`: 処理を停止する閾値(MB)
+- `--max-mb`: 1ファイルあたりの最大サイズ(MB) (既定: 95.0)
+- `--stop-threshold-mb`: 実行全体での処理合計サイズ上限(MB) (既定: 950.0)
 - `--proxy`: プロキシURL
 - `--config`: 設定ファイルパス
 - `--token`: Bearerトークン
@@ -134,17 +125,24 @@ graph TD
 
 ## ファイル名規則
 
-出力ファイル名は以下の形式になります：
-`【<projectKey>】 <サマリー> (<issueKey>)<Suffix>.md`
+出力される Markdown ファイルは、指定された条件に基づいて結合されます。ファイル名は以下の形式になります。
 
-- **サニタイズ**: ファイル名に使用できない文字（`\ / * ? : " < > |`）は自動的に削除され、長さは最大100文字に制限されます。
-- **Suffix**: 上書き指定（`--overwrite`）がない場合、ツール実行時点に基づく年月日時分秒のSuffixが付与されます（例: 2026年5月3日 16時5分02秒の時、`_260503_160502`）。
-- **上書き**: 上書き指定がある場合はSuffixを付与せずに出力し、同名の既存ファイルがあれば上書きします。上書き指定がなく、かつSuffixを付与してもなお同名ファイルが存在する場合や、ファイルがロックされている等の理由で書き込みができない場合はエラーとなり、処理を中断します。
+- **Basicモード**: `【<proj_keys>】 and (<labels>)<Suffix><Index>.md`
+  - 例: `【PROJ1 or PROJ2】 and (labelA or labelB)_250124_120000.md`
+  - 指定がない項目は `all` と表記されます。
+- **Advancedモード**: `<サニタイズされたJQL><Suffix><Index>.md`
+
+- **サニタイズ**: ファイル名に使用できない文字（`\ / * ? : " < > |`）は自動的に削除されます。
+- **Suffix**: 上書き指定（`--overwrite`）がない場合、ツール実行時点に基づく年月日時分秒のSuffixが付与されます（例: `_250124_120000`）。
+- **Index**: ファイルサイズ制限により分割された場合、2つ目以降のファイルに `_2`, `_3` ... と付与されます。
+- **上書き**: 上書き指定がある場合はSuffixを付与せずに出力し、同名の既存ファイルがあれば上書きします。
 
 ## サイズ制限の挙動
 
-- 出力ファイルの合計サイズが `--stop-threshold-mb` (既定95MB) を超える見込みになった時点で、新しいチケットの取得を停止し、それまで取得した内容をファイルに書き出します。
-- 最終的な合計サイズが `--max-mb` (既定100MB) を超えた場合は、ログに合計サイズが表示されますので確認してください。
+- **1ファイルあたりの制限 (`--max-mb`)**:
+  結合後の1ファイルあたりのサイズがこの値（既定 95.0MB）を超えないように制御します。超える場合は新しいファイルに分割されます。チケットの情報が複数のファイルに跨ることはありません。
+- **実行全体の制限 (`--stop-threshold-mb`)**:
+  全出力ファイルの合計サイズがこの値（既定 950.0MB）を超える見込みになった時点で、チケットの取得と出力を停止し、処理を終了します。
 
 ## よくあるエラーと対処方法
 
