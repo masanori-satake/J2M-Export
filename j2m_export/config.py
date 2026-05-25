@@ -18,12 +18,12 @@ class Config:
 
     def __init__(self):
         self.base_url: Optional[str] = None
-        self.issue_keys: List[str] = []
+        self.proj_keys: List[str] = []
         self.labels: List[str] = []
         self.jql: Optional[str] = None
         self.output_dir: str = "output"
-        self.max_mb: float = 100.0
-        self.stop_threshold_mb: float = 95.0
+        self.max_mb: float = 95.0
+        self.stop_threshold_mb: float = 950.0
         self.exclude_fields: List[str] = []
         self.proxy: Optional[str] = None
         self.token: Optional[str] = None
@@ -49,12 +49,12 @@ class Config:
                     if file_config:
                         self.base_url = file_config.get("base_url", self.base_url)
 
-                        keys = file_config.get("issue_keys")
+                        keys = file_config.get("proj_keys")
                         if keys:
                             if isinstance(keys, list):
-                                self.issue_keys = [str(k).strip() for k in keys]
+                                self.proj_keys = [str(k).strip() for k in keys]
                             else:
-                                logger.warning("issue_keys はリスト形式で指定してください。")
+                                logger.warning("proj_keys はリスト形式で指定してください。")
 
                         lbls = file_config.get("labels")
                         if lbls:
@@ -92,7 +92,7 @@ class Config:
         # 3. CLI引数からの読み込み（最高優先度）
         parser = argparse.ArgumentParser(description="Jiraチケット情報をMarkdownファイルに変換するツール")
         parser.add_argument("--base-url", type=str, help="JiraのベースURL (例: https://jira.example.com)")
-        parser.add_argument("--issue-keys", type=str, nargs="+", help="エクスポートするチケットID（複数指定可能）")
+        parser.add_argument("--proj-keys", type=str, nargs="+", help="対象とするプロジェクトキー（複数指定可能）")
         parser.add_argument("--labels", type=str, nargs="+", help="対象とするラベル（複数指定可能。いずれかに合致するものを抽出）")
         parser.add_argument("--jql", type=str, help="エクスポート対象を特定するJQLクエリ")
         parser.add_argument("--output-dir", type=str, help="Markdownファイルを保存するディレクトリ")
@@ -108,9 +108,9 @@ class Config:
 
         if cli_args.base_url: self.base_url = cli_args.base_url
 
-        # チケット選択引数（jql, issue_keys, labels）が一つでもCLIで指定されたら、設定ファイルの設定をすべて無視する。
-        if cli_args.issue_keys or cli_args.labels or cli_args.jql:
-            self.issue_keys = [k.strip() for k in cli_args.issue_keys] if cli_args.issue_keys else []
+        # チケット選択引数（jql, proj_keys, labels）が一つでもCLIで指定されたら、設定ファイルの設定をすべて無視する。
+        if cli_args.proj_keys or cli_args.labels or cli_args.jql:
+            self.proj_keys = [k.strip() for k in cli_args.proj_keys] if cli_args.proj_keys else []
             self.labels = [l.strip() for l in cli_args.labels] if cli_args.labels else []
             self.jql = cli_args.jql
 
@@ -130,8 +130,8 @@ class Config:
         """
         if not self.base_url:
             raise ValueError("base_url（JiraのベースURL）が設定されていません。")
-        if not self.issue_keys and not self.jql and not self.labels:
-            raise ValueError("issue_key, jql, label のいずれか一つは必須です。")
+        if not self.proj_keys and not self.jql and not self.labels:
+            raise ValueError("proj_keys, jql, labels のいずれか一つは必須です。")
         if not self.token:
             raise ValueError("token（Bearerトークン）が設定されていません。")
 

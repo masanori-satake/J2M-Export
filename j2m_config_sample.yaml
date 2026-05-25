@@ -3,10 +3,10 @@
 # JiraのベースURL (例: https://jira.example.com)
 base_url: "https://your-jira.com"
 
-# エクスポートするチケットID（リスト形式）
-issue_keys:
-  - "PROJ-1"
-  - "PROJ-2"
+# 対象とするプロジェクトキー（リスト形式）
+proj_keys:
+  - "PROJ"
+  - "OTHER"
 
 # または JQL を使用して対象を指定
 # jql: "project = PROJ AND status = 'In Progress'"
@@ -27,11 +27,13 @@ token: "your_bearer_token_here"
 # 出力先ディレクトリ (既定: output)
 output_dir: "output"
 
-# 出力ファイルの最大サイズ (MB) (既定: 100.0)
-max_mb: 100.0
+# 1ファイルあたりの最大サイズ (MB) (既定: 95.0)
+# このサイズを超えそうな場合、ファイルが分割されます
+max_mb: 95.0
 
-# 処理を停止する閾値 (MB) (既定: 95.0)
-stop_threshold_mb: 95.0
+# 実行全体で処理する合計サイズの上限 (MB) (既定: 950.0)
+# このサイズに達した時点で、チケットの収集を停止します
+stop_threshold_mb: 950.0
 
 # HTTP/HTTPS プロキシURL
 # proxy: "http://proxy.example.com:8080"

@@ -1,47 +1,50 @@
 from pathlib import Path
-from j2m_export.utils import get_unique_filename
+from j2m_export.utils import get_combined_filename
 
-def test_get_unique_filename_new_format():
-    # 期待される形式: 【プロジェクトキー】 サマリー (チケットキー)<suffix>.md
+def test_get_combined_filename_basic_mode():
     output_dir = "output"
-    project_key = "PROJ"
-    summary = "テストサマリー"
-    issue_key = "PROJ-123"
+    proj_keys = ["PROJ1", "PROJ2"]
+    labels = ["labelA", "labelB"]
 
-    # Suffixなし
-    path = get_unique_filename(output_dir, project_key, summary, issue_key)
-    assert str(path) == "output/【PROJ】 テストサマリー (PROJ-123).md"
+    # 全指定
+    path = get_combined_filename(output_dir, proj_keys, labels)
+    assert str(path) == "output/【PROJ1 or PROJ2】 and (labelA or labelB).md"
 
-    # Suffixあり
-    suffix = "_260503_160502"
-    path = get_unique_filename(output_dir, project_key, summary, issue_key, suffix=suffix)
-    assert str(path) == "output/【PROJ】 テストサマリー (PROJ-123)_260503_160502.md"
+    # プロジェクトのみ
+    path = get_combined_filename(output_dir, proj_keys, [])
+    assert str(path) == "output/【PROJ1 or PROJ2】 and (all).md"
 
-def test_get_unique_filename_sanitization():
+    # ラベルのみ
+    path = get_combined_filename(output_dir, [], labels)
+    assert str(path) == "output/【all】 and (labelA or labelB).md"
+
+def test_get_combined_filename_advanced_mode():
     output_dir = "output"
-    project_key = "PROJ"
-    summary = "サマリー / 禁止文字 : * ?"
-    issue_key = "PROJ-1"
+    jql = "project = PROJ AND status = Done"
 
-    path = get_unique_filename(output_dir, project_key, summary, issue_key)
-    # / : * ? が削除される
-    # "サマリー / 禁止文字 : * ?" -> "サマリー  禁止文字   "
-    # base_name = "【PROJ】 サマリー  禁止文字    (PROJ-1)"
-    assert str(path) == "output/【PROJ】 サマリー  禁止文字    (PROJ-1).md"
+    path = get_combined_filename(output_dir, [], [], jql=jql)
+    assert str(path) == "output/project = PROJ AND status = Done.md"
 
-def test_get_unique_filename_no_collision_due_to_truncation():
-    # 非常に長いサマリーがあっても、チケットキーが残るように改善されたか確認
+def test_get_combined_filename_with_suffix_and_index():
     output_dir = "output"
-    project_key = "PROJ"
-    long_summary = "A" * 200
-    issue_key_1 = "PROJ-1"
-    issue_key_2 = "PROJ-2"
+    proj_keys = ["PROJ"]
+    suffix = "_250124_120000"
 
-    path1 = get_unique_filename(output_dir, project_key, long_summary, issue_key_1)
-    path2 = get_unique_filename(output_dir, project_key, long_summary, issue_key_2)
+    # インデックスなし（1）
+    path = get_combined_filename(output_dir, proj_keys, [], suffix=suffix, index=1)
+    assert str(path) == "output/【PROJ】 and (all)_250124_120000.md"
 
-    # チケットキーが保持されるため、衝突しないはず
-    assert path1 != path2
-    assert "(PROJ-1)" in path1.name
-    assert "(PROJ-2)" in path2.name
-    assert len(path1.stem) <= 100
+    # インデックスあり（2）
+    path = get_combined_filename(output_dir, proj_keys, [], suffix=suffix, index=2)
+    assert str(path) == "output/【PROJ】 and (all)_250124_120000_2.md"
+
+def test_get_combined_filename_sanitization():
+    output_dir = "output"
+    # 禁止文字を含むJQL
+    jql = 'project = "PROJ" / status : Done'
+
+    path = get_combined_filename(output_dir, [], [], jql=jql)
+    # " / : が削除される
+    assert "PROJ" in path.name
+    assert "/" not in path.name
+    assert ":" not in path.name

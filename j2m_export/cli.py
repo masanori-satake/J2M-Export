@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from .config import Config
 from .jira import JiraClient
 from .converter import MarkdownConverter
-from .utils import get_unique_filename, bytes_to_mb, is_within_size_limit
+from .utils import get_combined_filename, bytes_to_mb, is_within_size_limit
 
 logger = logging.getLogger(__name__)
 
@@ -154,42 +154,24 @@ def main():
         except Exception as e:
             logger.error(f"JQLでのチケット検索に失敗しました（現象）。JQLクエリが正しいか確認してください（対処方法）。詳細: {e}（原因）")
 
-    # 2. Basicモード（JQL指定なし）: チケットキーまたはラベルによる簡易指定
+    # 2. Basicモード（JQL指定なし）: プロジェクトキーまたはラベルによる簡易指定
     else:
-        # 2-1. チケットキーが指定されている場合
-        if config.issue_keys:
-            total_keys = len(config.issue_keys)
-            logger.info(f"Basicモード: 指定されたチケットキーからチケットを収集します（合計: {total_keys} 件）")
-            for i, key in enumerate(config.issue_keys, 1):
-                try:
-                    logger.info(f"[{i}/{total_keys}] チケット取得中: {key}")
-                    issue = client.get_issue(key)
-                    issues_to_process.append(issue)
-                except Exception as e:
-                    logger.error(f"チケット {key} の取得に失敗しました（現象）。キーが正しいか、権限があるか確認してください（対処方法）。詳細: {e}（原因）")
+        basic_jql_parts = []
+        if config.proj_keys:
+            escaped_projs = [f'"{p.replace("\"", "\\\"")}"' for p in config.proj_keys]
+            basic_jql_parts.append(f"project IN ({', '.join(escaped_projs)})")
 
-            # ラベルが指定されている場合は、取得したチケットを絞り込む
-            if config.labels:
-                filtered_issues = []
-                label_set = {l.lower() for l in config.labels}
-                for issue in issues_to_process:
-                    issue_labels = [l.lower() for l in (issue.get('fields') or {}).get('labels', [])]
-                    if any(label in label_set for label in issue_labels):
-                        filtered_issues.append(issue)
+        if config.labels:
+            escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
+            basic_jql_parts.append(f"labels IN ({', '.join(escaped_labels)})")
 
-                issues_to_process = filtered_issues
-                logger.info(f"ラベルに合致する {len(issues_to_process)} 件のチケットに絞り込みました。対象ラベル: {', '.join(config.labels)}")
-
-        # 2-2. チケットキーがなくラベルのみ指定されている場合
-        elif config.labels:
+        if basic_jql_parts:
+            basic_jql = " AND ".join(basic_jql_parts)
+            logger.info(f"Basicモード: チケット取得を開始します（JQL: {basic_jql}）")
             try:
-                # ラベル用のJQLを生成（ダブルクォートをエスケープ）
-                escaped_labels = [f'"{l.replace("\"", "\\\"")}"' for l in config.labels]
-                label_jql = f"labels IN ({', '.join(escaped_labels)})"
-                logger.info(f"Basicモード: ラベルによるチケット取得を開始します（JQL: {label_jql}）")
-                issues_to_process = client.search_issues(label_jql)
+                issues_to_process = client.search_issues(basic_jql)
             except Exception as e:
-                logger.error(f"ラベルによるチケット取得に失敗しました（現象）。JQLクエリを確認してください（対処方法）。詳細: {e}（原因）")
+                logger.error(f"チケットの取得に失敗しました（現象）。指定したプロジェクトやラベルが正しいか確認してください（対処方法）。詳細: {e}（原因）")
 
     if not issues_to_process:
         logger.warning("処理対象のチケットが見つかりませんでした。")
@@ -214,22 +196,28 @@ def main():
         logger.error(f"出力ディレクトリへの書き込み権限がありません（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {output_dir}（原因）")
         sys.exit(1)
 
-    issue_path_map = {}
-    planned_paths = set()
     logger.info(f"合計 {len(issues_to_process)} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
-    for issue in issues_to_process:
-        key = issue['key']
-        fields = issue.get('fields') or {}
-        summary = fields.get('summary', 'No Summary')
-        project_key = fields.get('project', {}).get('key', 'UNKNOWN')
 
-        output_path = get_unique_filename(config.output_dir, project_key, summary, key, suffix)
+    current_file_index = 1
+    current_file_content = ""
+    current_file_size = 0
+    total_exported_bytes = 0
+    issue_count = 0
+    total_to_process = len(issues_to_process)
 
-        # 同一実行内でのファイル名衝突チェック
-        if output_path in planned_paths:
-            logger.error(f"同一実行内で出力ファイル名が重複しています（現象）。チケットのサマリー等を確認してください（対処方法）。詳細: {output_path}（原因）")
-            sys.exit(1)
-        planned_paths.add(output_path)
+    def write_current_buffer():
+        nonlocal current_file_content, current_file_size, current_file_index
+        if not current_file_content:
+            return
+
+        output_path = get_combined_filename(
+            config.output_dir,
+            config.proj_keys,
+            config.labels,
+            config.jql,
+            suffix,
+            current_file_index
+        )
 
         # 上書き禁止時に既にファイルが存在する場合
         if not config.overwrite and output_path.exists():
@@ -241,47 +229,50 @@ def main():
             logger.error(f"既存ファイルへの書き込み権限がありません（現象）。ファイルがロックされていないか確認してください（対処方法）。詳細: {output_path}（原因）")
             sys.exit(1)
 
-        issue_path_map[key] = output_path
-
-    # 収集したチケットの処理と保存
-    total_bytes = 0
-    issue_count = 0
-    total_to_process = len(issues_to_process)
+        try:
+            output_path.write_text(current_file_content, encoding="utf-8")
+            logger.info(f"ファイルを保存しました: {output_path} ({bytes_to_mb(current_file_size):.2f}MB)")
+            current_file_content = ""
+            current_file_size = 0
+            current_file_index += 1
+        except Exception as e:
+            logger.error(f"ファイル {output_path} の出力中にエラーが発生しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）")
+            sys.exit(1)
 
     for i, issue in enumerate(issues_to_process, 1):
         key = issue['key']
-        fields = issue.get('fields') or {}
-        summary = fields.get('summary', 'No Summary')
-        output_path = issue_path_map[key]
 
-        # チケット情報の変換（失敗しても後続を継続する）
+        # チケット情報の変換
         try:
             issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
         except Exception as e:
             logger.error(f"チケット {key} の変換処理中にエラーが発生しました（現象）。Jiraからの取得データを確認してください（対処方法）。詳細: {e}（原因）")
             continue
 
-        # ファイルへの書き込み（失敗した場合は即時終了する）
-        try:
-            md_bytes = len(issue_md.encode('utf-8'))
+        md_bytes = len(issue_md.encode('utf-8'))
 
-            if not is_within_size_limit(total_bytes + md_bytes, config.stop_threshold_mb):
-                logger.warning(f"停止閾値 ({config.stop_threshold_mb}MB) に達したため、エクスポートを中断します。")
-                break
+        # 全体サイズ制限（stop_threshold_mb）のチェック
+        if not is_within_size_limit(total_exported_bytes + md_bytes, config.stop_threshold_mb):
+            logger.warning(f"実行全体の停止閾値 ({config.stop_threshold_mb}MB) に達する見込みのため、エクスポートを中断します。")
+            break
 
-            output_path.write_text(issue_md, encoding="utf-8")
+        # 1ファイルあたりのサイズ制限（max_mb）のチェック
+        # チケットがファイルを跨がないよう、追加前にサイズを確認する
+        if current_file_content and not is_within_size_limit(current_file_size + md_bytes, config.max_mb):
+            write_current_buffer()
 
-            total_bytes += md_bytes
-            issue_count += 1
-            logger.info(f"[{i}/{total_to_process}] エクスポート完了: {key} ({summary})")
+        current_file_content += issue_md
+        current_file_size += md_bytes
+        total_exported_bytes += md_bytes
+        issue_count += 1
+        logger.info(f"[{i}/{total_to_process}] 処理中: {key}")
 
-        except Exception as e:
-            logger.error(f"チケット {key} のファイル出力中にエラーが発生しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）")
-            sys.exit(1)
+    # 残りのバッファを書き出す
+    write_current_buffer()
 
     logger.info("-" * 50)
     logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")
-    logger.info(f"合計サイズ: {bytes_to_mb(total_bytes):.2f}MB")
+    logger.info(f"合計サイズ: {bytes_to_mb(total_exported_bytes):.2f}MB")
 
 if __name__ == "__main__":
     main()

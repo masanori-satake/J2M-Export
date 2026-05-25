@@ -4,29 +4,34 @@ from pathlib import Path
 def sanitize_filename(name: str) -> str:
     """文字列をファイル名として使用可能な形式にサニタイズする。
 
-    OS(Windows/Linux/Mac)の制約に基づき不適切な文字を削除し、長さを制限する。
+    OS(Windows/Linux/Mac)の制約に基づき不適切な文字を削除・置換し、長さを制限する。
     """
     # ファイル名に使用できない文字を削除
     name = re.sub(r'[\\/*?:"<>|]', '', name)
-    # 前後の空白を削除し、長さを100文字以内に制限する
-    return name.strip()[:100]
+    # 改行やタブをスペースに置換
+    name = re.sub(r'[\r\n\t]+', ' ', name)
+    # 前後の空白を削除し、長さを150文字以内に制限する（結合ファイル名は長くなる可能性があるため少し拡張）
+    return name.strip()[:150]
 
-def get_unique_filename(output_dir: str, project_key: str, summary: str, issue_key: str, suffix: str = "") -> Path:
-    """エクスポート用のファイル名を生成する。
+def get_combined_filename(output_dir: str, proj_keys: list, labels: list, jql: str = None, suffix: str = "", index: int = 1) -> Path:
+    """結合エクスポート用のファイル名を生成する。
 
-    命名規則: 【プロジェクトキー】 サマリー (チケットキー)<suffix>.md
-    サマリーが長い場合は、プロジェクトキーとチケットキーが残るようにサマリー側を切り詰める。
+    Basicモード命名規則: 【proj1 or proj2】 and (labelA or labelB)
+    Advancedモード命名規則: サニタイズされたJQL
     """
-    # 固定部分の長さを計算 (【】、スペース、カッコ)
-    fixed_parts_len = len(f"【{project_key}】  ({issue_key})")
-    # 全体で100文字に収めるためのサマリーの最大長
-    max_summary_len = max(0, 100 - fixed_parts_len)
-    safe_summary = summary[:max_summary_len].strip()
+    if jql:
+        base_name = jql
+    else:
+        p_part = " or ".join(proj_keys) if proj_keys else "all"
+        l_part = " or ".join(labels) if labels else "all"
+        base_name = f"【{p_part}】 and ({l_part})"
 
-    base_name = f"【{project_key}】 {safe_summary} ({issue_key})"
     sanitized_name = sanitize_filename(base_name)
 
-    return Path(output_dir) / f"{sanitized_name}{suffix}.md"
+    # インデックス（分割番号）の付与
+    index_suffix = f"_{index}" if index > 1 else ""
+
+    return Path(output_dir) / f"{sanitized_name}{suffix}{index_suffix}.md"
 
 def bytes_to_mb(bytes_count: int) -> float:
     return bytes_count / (1024 * 1024)
