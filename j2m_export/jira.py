@@ -90,6 +90,7 @@ class JiraClient:
                     issue["schema"] = schema
 
             issues.extend(results)
+            logger.info(f"チケット取得中... ({len(issues)} / {data.get('total', 0)})")
 
             if start + len(results) >= data.get("total", 0) or not results:
                 break
