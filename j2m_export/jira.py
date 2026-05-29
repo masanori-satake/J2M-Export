@@ -22,6 +22,8 @@ class JiraSearchResult:
 
     def _fetch_next_page(self) -> bool:
         """次のページのチケットを取得する。"""
+        if self._total is not None and len(self._issues) >= self._total:
+            return False
         data = self.client._fetch_page(self.jql, self._next_start, self.limit)
         results = data.get("issues", [])
         self._total = data.get("total", 0)
@@ -78,19 +80,26 @@ class JiraSearchResult:
         全件取得してしまう可能性があるため、可能な限りイテレーションを推奨。
         """
         if isinstance(index, slice):
-            stop = index.stop if index.stop is not None else float('inf')
-            while len(self._issues) < stop:
-                if not self._fetch_next_page():
-                    break
-                if self._total is not None and len(self._issues) >= self._total:
-                    break
+            start = index.start or 0
+            stop = index.stop
+            # 負のインデックスやステップ、または上限がない場合は全件取得が必要
+            if (start < 0) or (stop is not None and stop < 0) or (index.step is not None and index.step < 0) or (stop is None):
+                while self._fetch_next_page():
+                    pass
+            else:
+                while len(self._issues) < stop:
+                    if not self._fetch_next_page():
+                        break
             return self._issues[index]
         else:
-            while len(self._issues) <= index:
-                if not self._fetch_next_page():
-                    break
-                if self._total is not None and len(self._issues) >= self._total:
-                    break
+            if index < 0:
+                # 負のインデックスの場合は全件取得してインデックスを確定させる
+                while self._fetch_next_page():
+                    pass
+            else:
+                while len(self._issues) <= index:
+                    if not self._fetch_next_page():
+                        break
             return self._issues[index]
 
 class JiraClient:

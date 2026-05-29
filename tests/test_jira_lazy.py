@@ -97,3 +97,43 @@ def test_jira_search_result_getitem(mock_request):
     # インデックスアクセス
     assert search_result[2]["key"] == "PROJ-3"
     assert mock_request.call_count == 2
+
+@patch("requests.Session.request")
+def test_jira_search_result_edge_cases(mock_request):
+    page1 = {
+        "issues": [{"key": "PROJ-1"}, {"key": "PROJ-2"}],
+        "total": 3,
+        "names": {},
+        "schema": {}
+    }
+    page2 = {
+        "issues": [{"key": "PROJ-3"}],
+        "total": 3,
+        "names": {},
+        "schema": {}
+    }
+    mock_request.side_effect = [
+        MagicMock(status_code=200, json=lambda: page1),
+        MagicMock(status_code=200, json=lambda: page2)
+    ]
+
+    client = JiraClient("https://jira.example.com", "fake_token")
+
+    # 負のインデックス
+    search_result = client.search_issues("project = PROJ", limit=2)
+    assert search_result[-1]["key"] == "PROJ-3"
+    assert mock_request.call_count == 2
+
+    mock_request.reset_mock()
+    mock_request.side_effect = [
+        MagicMock(status_code=200, json=lambda: page1),
+        MagicMock(status_code=200, json=lambda: page2)
+    ]
+
+    # 上限なしスライス
+    search_result = client.search_issues("project = PROJ", limit=2)
+    sliced = search_result[1:]
+    assert len(sliced) == 2
+    assert sliced[0]["key"] == "PROJ-2"
+    assert sliced[1]["key"] == "PROJ-3"
+    assert mock_request.call_count == 2
