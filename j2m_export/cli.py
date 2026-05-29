@@ -196,14 +196,15 @@ def main():
         logger.error(f"出力ディレクトリへの書き込み権限がありません（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {output_dir}（原因）")
         sys.exit(1)
 
-    logger.info(f"合計 {len(issues_to_process)} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
+    # len(issues_to_process) を呼び出すと、内部で最初の1ページを取得して合計件数を確定させる。
+    total_to_process = len(issues_to_process)
+    logger.info(f"合計 {total_to_process} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
 
     current_file_index = 1
     current_file_content = ""
     current_file_size = 0
     total_exported_bytes = 0
     issue_count = 0
-    total_to_process = len(issues_to_process)
 
     def write_current_buffer():
         nonlocal current_file_content, current_file_size, current_file_index
