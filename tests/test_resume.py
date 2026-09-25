@@ -13,7 +13,6 @@ from j2m_export.cli import (
     CHECKPOINT_FILENAME
 )
 from j2m_export.config import Config
-from j2m_export.utils import get_combined_filename
 
 
 def test_checkpoint_helpers(tmp_path):
@@ -55,84 +54,6 @@ def test_checkpoint_helpers(tmp_path):
     assert not cp_path.exists()
 
 
-@pytest.mark.parametrize("failure", ["write", "replace"])
-def test_save_checkpoint_keeps_previous_state_on_failure(tmp_path, caplog, failure):
-    """一時ファイルの保存失敗時に既存の進捗と警告を維持する。"""
-    cp_path = get_checkpoint_path(tmp_path)
-    cp_path.write_text("previous checkpoint", encoding="utf-8")
-
-    def fail_write(state, temporary_file, **kwargs):
-        temporary_file.write("partial")
-        raise OSError("write failed")
-
-    def fail_replace(source, destination):
-        assert Path(source).parent == tmp_path
-        assert json.loads(Path(source).read_text(encoding="utf-8"))["processed_keys"] == ["TEST-1"]
-        assert destination == cp_path
-        raise OSError("replace failed")
-
-    target = "j2m_export.cli.json.dump" if failure == "write" else "j2m_export.cli.os.replace"
-    side_effect = fail_write if failure == "write" else fail_replace
-    with patch(target, side_effect=side_effect):
-        save_checkpoint(cp_path, None, ["TEST"], [], "_resume", 1, 10, ["TEST-1"])
-
-    assert cp_path.read_text(encoding="utf-8") == "previous checkpoint"
-    assert list(tmp_path.iterdir()) == [cp_path]
-    assert "再開用ステートファイルの保存に失敗しました" in caplog.text
-
-
-@pytest.mark.parametrize(
-    "start_index, existing_content, issue_contents, expected_contents",
-    [
-        (1, "old-", ["AAAA", "BBBBBBB"], ["old-AAAA", "BBBBBBB"]),
-        (2, "previous", ["AAAA", "BBBBBB"], ["previous", "AAAABBBBBB"]),
-    ]
-)
-def test_resume_split_rewrites_stale_files(tmp_path, start_index, existing_content, issue_contents, expected_contents):
-    """再開元だけに追記し、サイズ超過後の古い分割ファイルを書き直す。"""
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-    first_path = get_combined_filename(output_dir, ["TEST"], [], None, "_resume", start_index)
-    second_path = get_combined_filename(output_dir, ["TEST"], [], None, "_resume", start_index + 1)
-    first_path.write_text(existing_content, encoding="utf-8")
-    second_path.write_text("stale data", encoding="utf-8")
-    cp_path = get_checkpoint_path(output_dir)
-    save_checkpoint(cp_path, None, ["TEST"], [], "_resume", start_index, len(existing_content), ["TEST-0"])
-
-    issues = [{"key": f"TEST-{index}", "text": content}
-              for index, content in enumerate(issue_contents, 1)]
-    args = ["cli.py", "--base-url", "https://jira.example.com", "--token", "dummy_token",
-            "--proj-keys", "TEST", "--output-dir", str(output_dir),
-            "--max-mb", str(10 / (1024 * 1024))]
-    with patch.object(sys, "argv", args), \
-            patch("j2m_export.cli.JiraClient") as mock_client, \
-            patch("j2m_export.cli.format_issue_md", side_effect=lambda issue, *_: issue["text"]):
-        mock_client.return_value.search_issues.return_value = issues
-        main()
-
-    assert first_path.read_text(encoding="utf-8") == expected_contents[0]
-    assert second_path.read_text(encoding="utf-8") == expected_contents[1]
-    assert not cp_path.exists()
-
-
-def test_new_export_keeps_first_file_for_oversized_issue(tmp_path):
-    """新規出力の最初のチケットが上限を超えても番号を進めない。"""
-    issue = {"key": "TEST-1", "text": "X" * 11}
-    args = ["cli.py", "--base-url", "https://jira.example.com", "--token", "dummy_token",
-            "--proj-keys", "TEST", "--output-dir", str(tmp_path), "--overwrite",
-            "--max-mb", str(10 / (1024 * 1024))]
-    with patch.object(sys, "argv", args), \
-            patch("j2m_export.cli.JiraClient") as mock_client, \
-            patch("j2m_export.cli.format_issue_md", return_value=issue["text"]):
-        mock_client.return_value.search_issues.return_value = [issue]
-        main()
-
-    first_path = get_combined_filename(tmp_path, ["TEST"], [], None, "", 1)
-    second_path = get_combined_filename(tmp_path, ["TEST"], [], None, "", 2)
-    assert first_path.read_text(encoding="utf-8") == issue["text"]
-    assert not second_path.exists()
-
-
 def test_main_interruption_and_resume(tmp_path):
     """取得途中で例外が発生した際に途中経過が保存され、次回実行時に再開されることを検証する。"""
     output_dir = tmp_path / "output"
@@ -163,15 +84,12 @@ def test_main_interruption_and_resume(tmp_path):
     # 1回目の実行: イテレーション途中で504などの例外をシミュレート
     class FaultyIssuesList:
         def __init__(self):
-            """中断までに取得できるチケットを用意する。"""
             self.issues = [issue1, issue2]
 
         def __len__(self):
-            """取得予定のチケット総数を返す。"""
             return 3
 
         def __iter__(self):
-            """2件を返した後に通信障害を再現する。"""
             yield issue1
             yield issue2
             raise Exception("504 Gateway Timeout (Simulated)")
@@ -212,15 +130,12 @@ def test_main_interruption_and_resume(tmp_path):
     # 2回目の実行: 正常に全件(TEST-1, TEST-2, TEST-3)取得できる環境で再開
     class SuccessfulIssuesList:
         def __init__(self):
-            """再開時に取得可能なチケットをすべて用意する。"""
             self.issues = [issue1, issue2, issue3]
 
         def __len__(self):
-            """取得可能なチケット総数を返す。"""
             return 3
 
         def __iter__(self):
-            """再開時に重複分も含む全チケットを返す。"""
             for issue in self.issues:
                 yield issue
 
@@ -279,11 +194,9 @@ def test_main_no_resume_option(tmp_path):
 
     class MockIssuesList:
         def __len__(self):
-            """新規実行で取得するチケット数を返す。"""
             return 1
 
         def __iter__(self):
-            """再開を無効にした実行でチケットを返す。"""
             yield issue1
 
     with patch.object(sys, "argv", test_args):

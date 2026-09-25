@@ -3,7 +3,6 @@ import sys
 import json
 import logging
 import datetime
-import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 
@@ -79,21 +78,9 @@ def save_checkpoint(
         "total_exported_bytes": total_exported_bytes,
         "processed_keys": processed_keys
     }
-    temporary_path = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=checkpoint_path.parent,
-            prefix=f".{checkpoint_path.name}.", suffix=".tmp", delete=False
-        ) as temporary_file:
-            temporary_path = Path(temporary_file.name)
-            json.dump(state, temporary_file, ensure_ascii=False, indent=2)
-        os.replace(temporary_path, checkpoint_path)
+        checkpoint_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink(missing_ok=True)
-            except OSError:
-                pass
         logger.warning(
             f"再開用ステートファイルの保存に失敗しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）"
         )
@@ -214,7 +201,6 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     return md
 
 def main():
-    """設定に従ってチケットを出力し、中断時には再開用の進捗を保存する。"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
@@ -307,7 +293,6 @@ def main():
         current_file_index = 1
         total_exported_bytes = 0
 
-    resume_file_index = current_file_index if is_resuming else None
     processed_keys_set = set(processed_keys)
 
     # len(issues_to_process) を呼び出すと、内部で最初の1ページを取得して合計件数を確定させる。
@@ -339,7 +324,6 @@ def main():
         current_file_size = initial_output_path.stat().st_size
 
     def write_current_buffer(increment_index: bool = True):
-        """未保存の内容を書き出し、分割時のみ次のファイルへ進める。"""
         nonlocal current_file_content, current_file_size, current_file_index
         if not current_file_content:
             return
@@ -364,7 +348,7 @@ def main():
             sys.exit(1)
 
         try:
-            if is_resuming and current_file_index == resume_file_index and output_path.exists():
+            if is_resuming and output_path.exists():
                 with output_path.open("a", encoding="utf-8") as f:
                     f.write(current_file_content)
             else:
@@ -402,12 +386,8 @@ def main():
 
             # 1ファイルあたりのサイズ制限（max_mb）のチェック
             # チケットがファイルを跨がないよう、追加前にサイズを確認する
-            if not is_within_size_limit(current_file_size + md_bytes, config.max_mb):
-                if current_file_content:
-                    write_current_buffer(increment_index=True)
-                elif current_file_size:
-                    current_file_index += 1
-                    current_file_size = 0
+            if current_file_content and not is_within_size_limit(current_file_size + md_bytes, config.max_mb):
+                write_current_buffer(increment_index=True)
 
             current_file_content += issue_md
             current_file_size += md_bytes
