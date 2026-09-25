@@ -28,6 +28,7 @@ class Config:
         self.proxy: Optional[str] = None
         self.token: Optional[str] = None
         self.overwrite: bool = False
+        self.no_resume: bool = False
 
     def load(self):
         """設定をロードする。
@@ -78,6 +79,7 @@ class Config:
                         self.proxy = file_config.get("proxy", self.proxy)
                         self.token = file_config.get("token", self.token)
                         self.overwrite = bool(file_config.get("overwrite", self.overwrite))
+                        self.no_resume = bool(file_config.get("no_resume", self.no_resume))
             except Exception as e:
                 logger.warning(f"設定ファイル {config_path} の読み込みに失敗しました。ファイル形式が正しいか確認してください。詳細: {e}")
 
@@ -103,6 +105,7 @@ class Config:
         parser.add_argument("--config", type=str, help=f"設定ファイルのパス (既定: j2m_config.yaml)")
         parser.add_argument("--token", type=str, help="JiraのBearerトークン")
         parser.add_argument("--overwrite", action="store_true", default=None, help="同名ファイルが存在する場合に上書きする（指定しない場合はSuffixが付与されます）")
+        parser.add_argument("--no-resume", action="store_true", default=None, help="途中からの再開を行わず、最初から新規エクスポートを実行します")
 
         cli_args = parser.parse_args()
 
@@ -122,6 +125,7 @@ class Config:
         if cli_args.proxy: self.proxy = cli_args.proxy
         if cli_args.token: self.token = cli_args.token
         if cli_args.overwrite is not None: self.overwrite = cli_args.overwrite
+        if cli_args.no_resume is not None: self.no_resume = cli_args.no_resume
 
     def validate(self):
         """必須設定項目のバリデーションを行う。

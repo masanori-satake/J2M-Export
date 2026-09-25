@@ -4,7 +4,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from .config import Config
 from .jira import JiraClient
@@ -15,6 +15,85 @@ logger = logging.getLogger(__name__)
 
 # エクスポートから除外できない必須フィールドのリスト。
 NON_IGNORABLE_IDS = ['summary', 'project', 'status', 'assignee', 'created', 'key']
+
+CHECKPOINT_FILENAME = ".j2m_resume.json"
+
+def get_checkpoint_path(output_dir: Union[str, Path]) -> Path:
+    """チェックポイントファイルのパスを取得する。"""
+    return Path(output_dir) / CHECKPOINT_FILENAME
+
+def load_checkpoint(
+    checkpoint_path: Path,
+    jql: Optional[str],
+    proj_keys: List[str],
+    labels: List[str]
+) -> Optional[Dict[str, Any]]:
+    """既存のチェックポイント情報を読み込み、現在の検索条件と一致するか確認する。"""
+    if not checkpoint_path.exists():
+        return None
+
+    try:
+        data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        target = data.get("target", {})
+        target_jql = target.get("jql")
+        target_proj_keys = sorted(target.get("proj_keys", []))
+        target_labels = sorted(target.get("labels", []))
+
+        curr_jql = jql
+        curr_proj_keys = sorted(proj_keys)
+        curr_labels = sorted(labels)
+
+        if target_jql == curr_jql and target_proj_keys == curr_proj_keys and target_labels == curr_labels:
+            return data
+        else:
+            logger.warning(
+                "保存されている再開用ステートファイルの検索条件が現在の設定と異なるため、新規エクスポートとして実行します。"
+            )
+            return None
+    except Exception as e:
+        logger.warning(
+            f"再開用ステートファイルの読み込みに失敗しました（現象）。新規エクスポートとして実行します（対処方法）。詳細: {e}（原因）"
+        )
+        return None
+
+def save_checkpoint(
+    checkpoint_path: Path,
+    jql: Optional[str],
+    proj_keys: List[str],
+    labels: List[str],
+    suffix: str,
+    current_file_index: int,
+    total_exported_bytes: int,
+    processed_keys: List[str]
+) -> None:
+    """チェックポイント情報(進捗状態)を保存する。"""
+    state = {
+        "target": {
+            "jql": jql,
+            "proj_keys": sorted(proj_keys),
+            "labels": sorted(labels)
+        },
+        "suffix": suffix,
+        "current_file_index": current_file_index,
+        "total_exported_bytes": total_exported_bytes,
+        "processed_keys": processed_keys
+    }
+    try:
+        checkpoint_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.warning(
+            f"再開用ステートファイルの保存に失敗しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）"
+        )
+
+def remove_checkpoint(checkpoint_path: Path) -> None:
+    """チェックポイントファイルを削除する。"""
+    if checkpoint_path.exists():
+        try:
+            checkpoint_path.unlink()
+        except Exception as e:
+            logger.warning(
+                f"再開用ステートファイルの削除に失敗しました（現象）。手動で削除してください（対処方法）。詳細: {e}（原因）"
+            )
 
 def format_field_value(value: Any) -> str:
     """Jiraのフィールド値を型に応じて文字列に整形する。
@@ -177,12 +256,6 @@ def main():
         logger.warning("処理対象のチケットが見つかりませんでした。")
         return
 
-    # Suffixの生成（非上書き時のみ使用）
-    suffix = ""
-    if not config.overwrite:
-        now = datetime.datetime.now()
-        suffix = now.strftime("_%y%m%d_%H%M%S")
-
     # 書き込み可否の事前チェック
     output_dir = Path(config.output_dir)
     try:
@@ -196,17 +269,61 @@ def main():
         logger.error(f"出力ディレクトリへの書き込み権限がありません（現象）。ディレクトリの権限を確認してください（対処方法）。詳細: {output_dir}（原因）")
         sys.exit(1)
 
-    # len(issues_to_process) を呼び出すと、内部で最初の1ページを取得して合計件数を確定させる。
-    total_to_process = len(issues_to_process)
-    logger.info(f"合計 {total_to_process} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
+    checkpoint_path = get_checkpoint_path(config.output_dir)
+    resume_state = None
+    if not config.no_resume:
+        resume_state = load_checkpoint(checkpoint_path, config.jql, config.proj_keys, config.labels)
 
-    current_file_index = 1
+    is_resuming = False
+    processed_keys: List[str] = []
+
+    if resume_state:
+        is_resuming = True
+        suffix = resume_state.get("suffix", "")
+        current_file_index = int(resume_state.get("current_file_index", 1))
+        total_exported_bytes = int(resume_state.get("total_exported_bytes", 0))
+        processed_keys = list(resume_state.get("processed_keys", []))
+        logger.info(f"前回の処理中断からの再開データを検出しました（処理済みチケット数: {len(processed_keys)} 件）。エクスポートを再開します。")
+    else:
+        # Suffixの生成（非上書き時のみ使用）
+        suffix = ""
+        if not config.overwrite:
+            now = datetime.datetime.now()
+            suffix = now.strftime("_%y%m%d_%H%M%S")
+        current_file_index = 1
+        total_exported_bytes = 0
+
+    processed_keys_set = set(processed_keys)
+
+    # len(issues_to_process) を呼び出すと、内部で最初の1ページを取得して合計件数を確定させる。
+    try:
+        total_to_process = len(issues_to_process)
+    except Exception as e:
+        logger.error(f"チケット件数の取得中にエラーが発生しました（現象）。ネットワーク環境やJiraの状態を確認してください（対処方法）。詳細: {e}（原因）")
+        sys.exit(1)
+
+    if is_resuming:
+        logger.info(f"合計 {total_to_process} 件のチケットを処理対象として決定しました（うち {len(processed_keys_set)} 件は処理済みのためスキップします）。エクスポートを開始します。")
+    else:
+        logger.info(f"合計 {total_to_process} 件のチケットを処理対象として決定しました。エクスポートを開始します。")
+
     current_file_content = ""
     current_file_size = 0
-    total_exported_bytes = 0
-    issue_count = 0
+    issue_count = len(processed_keys_set) if is_resuming else 0
 
-    def write_current_buffer():
+    # 再開時に既存の該当ファイルが存在する場合は、その現在のファイルサイズを取得する
+    initial_output_path = get_combined_filename(
+        config.output_dir,
+        config.proj_keys,
+        config.labels,
+        config.jql,
+        suffix,
+        current_file_index
+    )
+    if is_resuming and initial_output_path.exists():
+        current_file_size = initial_output_path.stat().st_size
+
+    def write_current_buffer(increment_index: bool = True):
         nonlocal current_file_content, current_file_size, current_file_index
         if not current_file_content:
             return
@@ -220,8 +337,8 @@ def main():
             current_file_index
         )
 
-        # 上書き禁止時に既にファイルが存在する場合
-        if not config.overwrite and output_path.exists():
+        # 上書き禁止時に既にファイルが存在する場合（新規実行時のみエラー。再開時は既存ファイルへの追記を許可）
+        if not config.overwrite and output_path.exists() and not is_resuming:
             logger.error(f"出力ファイルが既に存在します（現象）。上書きを許可するか、既存のファイルを移動してください（対処方法）。詳細: {output_path}（原因）")
             sys.exit(1)
 
@@ -231,45 +348,75 @@ def main():
             sys.exit(1)
 
         try:
-            output_path.write_text(current_file_content, encoding="utf-8")
+            if is_resuming and output_path.exists():
+                with output_path.open("a", encoding="utf-8") as f:
+                    f.write(current_file_content)
+            else:
+                output_path.write_text(current_file_content, encoding="utf-8")
+
             logger.info(f"ファイルを保存しました: {output_path} ({bytes_to_mb(current_file_size):.2f}MB)")
             current_file_content = ""
-            current_file_size = 0
-            current_file_index += 1
+            if increment_index:
+                current_file_index += 1
+                current_file_size = 0
         except Exception as e:
             logger.error(f"ファイル {output_path} の出力中にエラーが発生しました（現象）。ディスク容量や権限を確認してください（対処方法）。詳細: {e}（原因）")
             sys.exit(1)
 
-    for i, issue in enumerate(issues_to_process, 1):
-        key = issue['key']
+    try:
+        for i, issue in enumerate(issues_to_process, 1):
+            key = issue['key']
 
-        # チケット情報の変換
-        try:
-            issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
-        except Exception as e:
-            logger.error(f"チケット {key} の変換処理中にエラーが発生しました（現象）。Jiraからの取得データを確認してください（対処方法）。詳細: {e}（原因）")
-            continue
+            if key in processed_keys_set:
+                continue
 
-        md_bytes = len(issue_md.encode('utf-8'))
+            # チケット情報の変換
+            try:
+                issue_md = format_issue_md(issue, converter, config.base_url, config.exclude_fields)
+            except Exception as e:
+                logger.error(f"チケット {key} の変換処理中にエラーが発生しました（現象）。Jiraからの取得データを確認してください（対処方法）。詳細: {e}（原因）")
+                continue
 
-        # 全体サイズ制限（stop_threshold_mb）のチェック
-        if not is_within_size_limit(total_exported_bytes + md_bytes, config.stop_threshold_mb):
-            logger.warning(f"実行全体の停止閾値 ({config.stop_threshold_mb}MB) に達する見込みのため、エクスポートを中断します。")
-            break
+            md_bytes = len(issue_md.encode('utf-8'))
 
-        # 1ファイルあたりのサイズ制限（max_mb）のチェック
-        # チケットがファイルを跨がないよう、追加前にサイズを確認する
-        if current_file_content and not is_within_size_limit(current_file_size + md_bytes, config.max_mb):
-            write_current_buffer()
+            # 全体サイズ制限（stop_threshold_mb）のチェック
+            if not is_within_size_limit(total_exported_bytes + md_bytes, config.stop_threshold_mb):
+                logger.warning(f"実行全体の停止閾値 ({config.stop_threshold_mb}MB) に達する見込みのため、エクスポートを中断します。")
+                break
 
-        current_file_content += issue_md
-        current_file_size += md_bytes
-        total_exported_bytes += md_bytes
-        issue_count += 1
-        logger.info(f"[{i}/{total_to_process}] 処理中: {key}")
+            # 1ファイルあたりのサイズ制限（max_mb）のチェック
+            # チケットがファイルを跨がないよう、追加前にサイズを確認する
+            if current_file_content and not is_within_size_limit(current_file_size + md_bytes, config.max_mb):
+                write_current_buffer(increment_index=True)
 
-    # 残りのバッファを書き出す
-    write_current_buffer()
+            current_file_content += issue_md
+            current_file_size += md_bytes
+            total_exported_bytes += md_bytes
+            issue_count += 1
+            processed_keys.append(key)
+            processed_keys_set.add(key)
+            logger.info(f"[{i}/{total_to_process}] 処理中: {key}")
+
+        # 残りのバッファを書き出す
+        write_current_buffer(increment_index=False)
+
+        # エクスポート正常完了時はステートファイルを削除
+        remove_checkpoint(checkpoint_path)
+
+    except (Exception, KeyboardInterrupt) as e:
+        logger.error(f"エクスポート処理中にエラーが発生し中断しました（現象）。障害原因を解消後、再度コマンドを実行すると途中から再開できます（対処方法）。詳細: {e}（原因）")
+        write_current_buffer(increment_index=False)
+        save_checkpoint(
+            checkpoint_path,
+            config.jql,
+            config.proj_keys,
+            config.labels,
+            suffix,
+            current_file_index,
+            total_exported_bytes,
+            processed_keys
+        )
+        sys.exit(1)
 
     logger.info("-" * 50)
     logger.info(f"{issue_count} 件のチケットを正常にエクスポートしました。")
