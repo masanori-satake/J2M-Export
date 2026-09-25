@@ -201,6 +201,7 @@ def format_issue_md(issue: Dict, converter: MarkdownConverter, base_url: str, ex
     return md
 
 def main():
+    """設定に従ってチケットを出力し、中断時には再開用の進捗を保存する。"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
@@ -324,6 +325,7 @@ def main():
         current_file_size = initial_output_path.stat().st_size
 
     def write_current_buffer(increment_index: bool = True):
+        """未保存の内容を書き出し、分割時のみ次のファイルへ進める。"""
         nonlocal current_file_content, current_file_size, current_file_index
         if not current_file_content:
             return

@@ -84,12 +84,15 @@ def test_main_interruption_and_resume(tmp_path):
     # 1回目の実行: イテレーション途中で504などの例外をシミュレート
     class FaultyIssuesList:
         def __init__(self):
+            """中断までに取得できるチケットを用意する。"""
             self.issues = [issue1, issue2]
 
         def __len__(self):
+            """取得予定のチケット総数を返す。"""
             return 3
 
         def __iter__(self):
+            """2件を返した後に通信障害を再現する。"""
             yield issue1
             yield issue2
             raise Exception("504 Gateway Timeout (Simulated)")
@@ -130,12 +133,15 @@ def test_main_interruption_and_resume(tmp_path):
     # 2回目の実行: 正常に全件(TEST-1, TEST-2, TEST-3)取得できる環境で再開
     class SuccessfulIssuesList:
         def __init__(self):
+            """再開時に取得可能なチケットをすべて用意する。"""
             self.issues = [issue1, issue2, issue3]
 
         def __len__(self):
+            """取得可能なチケット総数を返す。"""
             return 3
 
         def __iter__(self):
+            """再開時に重複分も含む全チケットを返す。"""
             for issue in self.issues:
                 yield issue
 
@@ -194,9 +200,11 @@ def test_main_no_resume_option(tmp_path):
 
     class MockIssuesList:
         def __len__(self):
+            """新規実行で取得するチケット数を返す。"""
             return 1
 
         def __iter__(self):
+            """再開を無効にした実行でチケットを返す。"""
             yield issue1
 
     with patch.object(sys, "argv", test_args):

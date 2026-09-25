@@ -17,6 +17,7 @@ class Config:
     """
 
     def __init__(self):
+        """設定値を初期化し、ファイルと引数からの読み込みに備える。"""
         self.base_url: Optional[str] = None
         self.proj_keys: List[str] = []
         self.labels: List[str] = []
